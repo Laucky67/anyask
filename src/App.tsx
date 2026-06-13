@@ -51,6 +51,9 @@ export default function App() {
       void hideAiWebviews();
       return;
     }
+    // 等 activeId 确定后再同步：否则首个 effect 会以 activeId=null 触发，
+    // 把激活项也按「保留」分支创建成隐藏，随后仅 show() 导致 WebView2 不绘制（白屏）。
+    if (activeId === null && enabledProviders.length > 0) return;
     void syncAiWebviews(enabledProviders, activeId, settings.keepStateOnSwitch).then(reposition);
   }, [ready, showSettings, activeId, enabledProviders, settings.keepStateOnSwitch]);
 
