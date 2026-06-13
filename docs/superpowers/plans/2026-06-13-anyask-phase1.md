@@ -2218,9 +2218,16 @@ await invoke("sync_ai_webviews", {
 Expected：
 - 主窗口右侧(x≥64)出现 ChatGPT，左侧 64px 仍是 React 外壳。
 - 再执行一次、把 `activeId` 改为 `"claude"` → 切到 Claude，ChatGPT 隐藏但保留。
-- 拖动窗口改变大小 → webview 自动跟随缩放（`auto_resize` 生效，无需手动重定位）。
+- 拖动窗口改变大小 → webview 自动跟随缩放（`auto_resize` 生效）。
 - 登录 ChatGPT 后重启应用再执行 → 仍是登录态。
 - 执行 `await invoke("hide_ai_webviews")` → AI webview 全部隐藏，露出 React 外壳。
+
+再验证 `reposition_ai_webviews`（确认显式 `set_position/set_size` 对 Rust 创建的子 webview 生效——Task 15 才接 ResizeObserver，这里先单测通路，免得到那时才暴露问题）：
+```js
+await invoke("sync_ai_webviews", { providers: [{ id: "chatgpt", url: "https://chatgpt.com" }], activeId: "chatgpt", keepState: true });
+await invoke("reposition_ai_webviews", { bounds: { x: 200, y: 100, width: 500, height: 400 } });
+```
+Expected：ChatGPT webview 立即移动并缩放到约 (200,100) 500×400（说明显式重定位通路可用）。
 
 - [ ] **Step 7: 提交**
 
@@ -2813,15 +2820,19 @@ pub fn set_url(app: &AppHandle, url: String) {
 
 /// 定位到屏幕中下居中
 fn center_bottom(win: &tauri::WebviewWindow) {
-    if let Ok(Some(monitor)) = win.current_monitor() {
-        let screen = monitor.size();
-        let scale = monitor.scale_factor();
-        let w = (WIDTH * scale) as i32;
-        let h = (HEIGHT * scale) as i32;
-        let x = (screen.width as i32 - w) / 2;
-        let y = (screen.height as i32 - h) - (screen.height as i32 / 12); // 偏下，留出底部边距
-        let _ = win.set_position(tauri::PhysicalPosition::new(x.max(0), y.max(0)));
-    }
+    // 新建窗口可能暂时拿不到 current_monitor，回退到 primary_monitor
+    let monitor = match win.current_monitor() {
+        Ok(Some(m)) => Some(m),
+        _ => win.primary_monitor().ok().flatten(),
+    };
+    let Some(monitor) = monitor else { return };
+    let screen = monitor.size();
+    let scale = monitor.scale_factor();
+    let w = (WIDTH * scale) as i32;
+    let h = (HEIGHT * scale) as i32;
+    let x = (screen.width as i32 - w) / 2;
+    let y = (screen.height as i32 - h) - (screen.height as i32 / 12); // 偏下，留出底部边距
+    let _ = win.set_position(tauri::PhysicalPosition::new(x.max(0), y.max(0)));
 }
 ```
 
@@ -2896,7 +2907,7 @@ Modify `src-tauri/tauri.conf.json` 的 `app.windows[0]`：
   "minHeight": 600
 }
 ```
-（确保 `label` 为 `"main"`，与 Rust 中 `get_webview_window("main")` 一致。）
+（确保 `label` 为 `"main"`，与 Rust 中 `get_window("main")` 一致——主窗口是承载多个 webview 的 Window，非单个 WebviewWindow。）
 
 - [ ] **Step 2: 更新页面标题**
 
