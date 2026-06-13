@@ -34,9 +34,12 @@ export function HotkeySettings() {
       const acc = eventToAccelerator(e);
       if (acc && isValidAccelerator(acc)) {
         const nextHotkeys: Hotkeys = { ...settings.hotkeys, [recording]: acc };
-        updateSettings({ hotkeys: nextHotkeys });
-        void applyHotkeys().then(setRegistration);
         setRecording(null);
+        // 先等设置持久化，再让 Rust 重新注册——否则 Rust 读到旧 store 值，
+        // 新快捷键要切出设置页重挂载才生效。
+        void updateSettings({ hotkeys: nextHotkeys })
+          .then(() => applyHotkeys())
+          .then(setRegistration);
       }
     };
     window.addEventListener("keydown", onKey, true);

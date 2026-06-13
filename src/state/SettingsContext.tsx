@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react";
 import type { Settings } from "./types";
 import { DEFAULT_SETTINGS } from "./defaults";
 import { loadSettings, saveSettings } from "./settingsStore";
@@ -6,7 +6,8 @@ import { loadSettings, saveSettings } from "./settingsStore";
 interface SettingsContextValue {
   settings: Settings;
   ready: boolean;
-  updateSettings: (patch: Partial<Settings>) => void;
+  /** 合并 patch、写回 store；返回的 Promise 在持久化完成后 resolve（调用方可据此排序后续动作） */
+  updateSettings: (patch: Partial<Settings>) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -14,11 +15,14 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [ready, setReady] = useState(false);
+  // 跟踪最新设置，使 updateSettings 能同步算出 next 并返回保存 Promise，避免闭包过期
+  const settingsRef = useRef<Settings>(DEFAULT_SETTINGS);
 
   useEffect(() => {
     let alive = true;
     loadSettings().then((s) => {
       if (alive) {
+        settingsRef.current = s;
         setSettings(s);
         setReady(true);
       }
@@ -28,12 +32,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const updateSettings = useCallback((patch: Partial<Settings>) => {
-    setSettings((prev) => {
-      const next = { ...prev, ...patch };
-      void saveSettings(next);
-      return next;
-    });
+  const updateSettings = useCallback((patch: Partial<Settings>): Promise<void> => {
+    const next = { ...settingsRef.current, ...patch };
+    settingsRef.current = next;
+    setSettings(next);
+    return saveSettings(next);
   }, []);
 
   return (

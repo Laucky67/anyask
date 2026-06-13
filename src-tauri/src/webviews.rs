@@ -1,5 +1,7 @@
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl};
 
+use crate::state::AppState;
+
 pub const SIDEBAR_WIDTH: f64 = 64.0; // 必须与前端 --sidebar-w 一致
 const PREFIX: &str = "ai-";
 
@@ -54,6 +56,11 @@ pub async fn sync_ai_webviews(
     active_id: Option<String>,
     keep_state: bool,
 ) -> Result<(), String> {
+    // 串行化：并发调用（StrictMode 双触发、快速点击）逐个执行，
+    // 保证 ensure() 的「检查存在 → 创建」不被另一调用穿插。
+    let state = app.state::<AppState>();
+    let _guard = state.webview_sync.lock().await;
+
     let enabled_labels: std::collections::HashSet<String> =
         providers.iter().map(|p| label(&p.id)).collect();
 

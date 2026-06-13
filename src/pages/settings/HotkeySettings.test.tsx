@@ -26,7 +26,8 @@ function setup() {
 }
 
 beforeEach(() => {
-  saveSettings.mockClear();
+  saveSettings.mockReset();
+  saveSettings.mockResolvedValue(undefined);
   applyHotkeys.mockClear();
 });
 
@@ -48,5 +49,26 @@ describe("HotkeySettings", () => {
       expect(last.hotkeys.quickAsk).toBe("CommandOrControl+Alt+J");
     });
     expect(applyHotkeys).toHaveBeenCalled();
+  });
+
+  it("applies hotkeys only after the new setting is persisted", async () => {
+    // 让保存挂起，模拟 store 写入尚未完成
+    let resolveSave: (() => void) | null = null;
+    saveSettings.mockImplementation(
+      () => new Promise<void>((res) => { resolveSave = () => res(); })
+    );
+    setup();
+    await waitFor(() => screen.getByText("快捷提问"));
+    applyHotkeys.mockClear(); // 忽略挂载时的一次 applyHotkeys
+    await userEvent.click(screen.getByRole("button", { name: /设置 快捷提问 快捷键/ }));
+    fireEvent.keyDown(window, { ctrlKey: true, altKey: true, code: "KeyJ", key: "j" });
+
+    // 保存已发起
+    await waitFor(() => expect(saveSettings).toHaveBeenCalled());
+    // 保存完成前不得调用 applyHotkeys（否则 Rust 会读到旧值 -> 切出设置才生效的 bug）
+    expect(applyHotkeys).not.toHaveBeenCalled();
+
+    resolveSave!();
+    await waitFor(() => expect(applyHotkeys).toHaveBeenCalled());
   });
 });
