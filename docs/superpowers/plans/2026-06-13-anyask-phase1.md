@@ -123,6 +123,16 @@ if (!window.matchMedia) {
     dispatchEvent: () => false,
   })) as unknown as typeof window.matchMedia;
 }
+
+// jsdom 不实现 ResizeObserver，承载层重定位用到，提供最小桩
+if (!("ResizeObserver" in globalThis)) {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+}
 ```
 
 - [ ] **Step 4: 加 package.json 脚本**
@@ -326,11 +336,14 @@ git commit -m "feat: 设置数据模型、默认值与 mergeSettings"
 
 注：store 的真实 I/O 依赖 Tauri 运行时，无法在 jsdom 单测里跑，本任务用手动验证。
 
-- [ ] **Step 1: Rust 侧加 store 插件**
+- [ ] **Step 1: Rust 侧加 store 插件（并前置 time 锁定）**
 
 Modify `src-tauri/Cargo.toml`，在 `[dependencies]` 加：
 ```toml
 tauri-plugin-store = "2"
+# 前置锁定 time < 0.3.48：0.3.48 经 cookie 0.18.1 触发 Tauri 依赖树 trait coherence 冲突。
+# 这是首次会触发 Rust 构建的任务，提前加避免后续 cargo check/tauri dev 中途爆（MVP 已踩坑）。
+time = "=0.3.47"
 ```
 
 - [ ] **Step 2: 注册插件**
@@ -638,6 +651,7 @@ export const zhCN: Record<string, string> = {
   "hotkeys.showMain": "显示主界面",
   "hotkeys.recording": "请按下快捷键…",
   "hotkeys.conflict": "与其它快捷键冲突",
+  "hotkeys.failed": "注册失败（可能与系统或输入法冲突）",
   "common.empty": "暂无可用 AI，请在设置中启用",
 };
 ```
@@ -1275,21 +1289,20 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
 - [ ] **Step 6: 删除无用文件**
 
-Run: `git rm src/App.css 2>/dev/null || rm -f src/App.css`
-（若 `main.tsx` 之前引用了 `App.css`，已在重写中移除。）
+Run: `rm -f src/App.css`
+（脚手架自带、未被 git 跟踪，直接删除即可；`main.tsx` 重写后已不再引用它。）
 
 - [ ] **Step 7: 运行验证通过**
 
 Run: `pnpm test src/App.test.tsx`
-Expected: PASS。（依赖 `SettingsPage`，由下一个任务实现——若此任务先行，临时建一个最小 `SettingsPage` 返回含「基础配置」文案的占位，再在 Task 10 完善。）
+Expected: PASS。
 
-> 执行提示：Task 9 与 Task 10 有依赖。建议先做 Task 10 的 SettingsPage 骨架再跑 App 测试，或按上面提示放占位。
+> **执行顺序（采纳复审建议）**：App 测试依赖 `SettingsPage`，而 `SettingsPage` 依赖 BasicSettings/AiConfigSettings/HotkeySettings。因此实际执行顺序为：先做 Task 10–13（基础配置、AI 配置、快捷键逻辑与 UI）+ SettingsPage 骨架，再回到本任务接好 App 跑测试，避免造一次性占位文件。
 
 - [ ] **Step 8: 提交**
 
 ```bash
 git add src/App.tsx src/main.tsx src/components/ContentArea.tsx src/App.test.tsx
-git rm --cached src/App.css 2>/dev/null || true
 git commit -m "feat: App 外壳与内容区路由"
 ```
 
@@ -1842,7 +1855,7 @@ vi.mock("../../state/settingsStore", () => ({
   loadSettings: () => Promise.resolve(DEFAULT_SETTINGS),
   saveSettings: (s: unknown) => saveSettings(s),
 }));
-const applyHotkeys = vi.fn().mockResolvedValue(undefined);
+const applyHotkeys = vi.fn().mockResolvedValue({ quickAsk: true, showMain: true });
 vi.mock("../../lib/commands", () => ({ applyHotkeys: () => applyHotkeys() }));
 
 import { SettingsProvider } from "../../state/SettingsContext";
@@ -1899,7 +1912,7 @@ import { useEffect, useState } from "react";
 import { useSettings } from "../../state/SettingsContext";
 import { useT } from "../../i18n";
 import { eventToAccelerator, isValidAccelerator, formatAccelerator, hasConflict } from "../../lib/hotkeys";
-import { applyHotkeys } from "../../lib/commands";
+import { applyHotkeys, type HotkeyRegistration } from "../../lib/commands";
 import type { Hotkeys } from "../../state/types";
 
 type HotkeyName = keyof Hotkeys;
@@ -1913,6 +1926,12 @@ export function HotkeySettings() {
   const { settings, updateSettings } = useSettings();
   const t = useT();
   const [recording, setRecording] = useState<HotkeyName | null>(null);
+  const [registration, setRegistration] = useState<HotkeyRegistration | null>(null);
+
+  // 进入页面时获取当前注册状态（Rust 按现有设置重新注册并返回结果）
+  useEffect(() => {
+    void applyHotkeys().then(setRegistration);
+  }, []);
 
   useEffect(() => {
     if (!recording) return;
@@ -1926,7 +1945,7 @@ export function HotkeySettings() {
       if (acc && isValidAccelerator(acc)) {
         const nextHotkeys: Hotkeys = { ...settings.hotkeys, [recording]: acc };
         updateSettings({ hotkeys: nextHotkeys });
-        void applyHotkeys();
+        void applyHotkeys().then(setRegistration);
         setRecording(null);
       }
     };
@@ -1943,22 +1962,27 @@ export function HotkeySettings() {
         return (
           <div key={row.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", border: "1px solid var(--border)", borderRadius: 10 }}>
             <span>{t(row.labelKey)}</span>
-            <button
-              type="button"
-              aria-label={`设置 ${t(row.labelKey)} 快捷键`}
-              onClick={() => setRecording(row.name)}
-              style={{
-                minWidth: 160,
-                padding: "6px 12px",
-                borderRadius: 8,
-                border: `1px solid ${isRec ? "var(--accent)" : "var(--border)"}`,
-                background: "var(--bg-elev)",
-                color: "var(--fg)",
-                cursor: "pointer",
-              }}
-            >
-              {isRec ? t("hotkeys.recording") : formatAccelerator(settings.hotkeys[row.name])}
-            </button>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+              <button
+                type="button"
+                aria-label={`设置 ${t(row.labelKey)} 快捷键`}
+                onClick={() => setRecording(row.name)}
+                style={{
+                  minWidth: 160,
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  border: `1px solid ${isRec ? "var(--accent)" : "var(--border)"}`,
+                  background: "var(--bg-elev)",
+                  color: "var(--fg)",
+                  cursor: "pointer",
+                }}
+              >
+                {isRec ? t("hotkeys.recording") : formatAccelerator(settings.hotkeys[row.name])}
+              </button>
+              {registration && registration[row.name] === false && (
+                <span style={{ color: "#e0a23a", fontSize: 12 }}>{t("hotkeys.failed")}</span>
+              )}
+            </div>
           </div>
         );
       })}
@@ -1974,9 +1998,15 @@ Create `src/lib/commands.ts`:
 ```ts
 import { invoke } from "@tauri-apps/api/core";
 
-/** 通知 Rust 用最新设置重新注册全局快捷键 */
-export async function applyHotkeys(): Promise<void> {
-  await invoke("apply_hotkeys");
+/** 各快捷键的注册结果（false = 解析失败或与系统/输入法冲突） */
+export interface HotkeyRegistration {
+  quickAsk: boolean;
+  showMain: boolean;
+}
+
+/** 通知 Rust 用最新设置重新注册全局快捷键，返回每个键的注册结果 */
+export async function applyHotkeys(): Promise<HotkeyRegistration> {
+  return await invoke<HotkeyRegistration>("apply_hotkeys");
 }
 
 /** 显示并聚焦主窗口 */
@@ -2020,14 +2050,13 @@ git commit -m "feat: 快捷键设置捕获 UI 与命令封装"
 
 > 关键常量：`SIDEBAR_WIDTH = 64.0`，必须与前端 CSS `--sidebar-w: 64px` 一致。AI webview 覆盖 `LogicalPosition(SIDEBAR_WIDTH, 0)` 到窗口右下角。
 
-- [ ] **Step 1: Cargo 依赖（unstable + time 锁定）**
+- [ ] **Step 1: 开启 unstable 特性**
 
-Modify `src-tauri/Cargo.toml` 的 `[dependencies]`：
+Modify `src-tauri/Cargo.toml` 的 tauri 依赖，加 `unstable` 特性：
 ```toml
 tauri = { version = "2", features = ["unstable"] }
-# 锁定 time < 0.3.48：0.3.48 经 cookie 0.18.1 触发 Tauri 依赖树 trait coherence 冲突（MVP 已踩坑）
-time = "=0.3.47"
 ```
+> `time = "=0.3.47"` 已在 Task 3 前置添加，此处无需重复。
 
 - [ ] **Step 2: 确认权限无需变更**
 
@@ -2135,6 +2164,28 @@ pub async fn hide_ai_webviews(app: AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// 内容区真实边界（前端 ContentArea.getBoundingClientRect 测得，逻辑像素）
+#[derive(serde::Deserialize)]
+pub struct Bounds {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// 把 AI webview 重新摆放到真实内容区（前端在挂载/布局变化/ResizeObserver 时调用）。
+/// 作为 auto_resize 的校正后备，使位置不再仅依赖硬编码 SIDEBAR_WIDTH。
+#[tauri::command]
+pub async fn reposition_ai_webviews(app: AppHandle, bounds: Bounds) -> Result<(), String> {
+    for (lbl, wv) in app.webviews() {
+        if lbl.starts_with(PREFIX) {
+            let _ = wv.set_position(LogicalPosition::new(bounds.x, bounds.y));
+            let _ = wv.set_size(LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)));
+        }
+    }
+    Ok(())
+}
 ```
 
 - [ ] **Step 4: 在 lib.rs 注册命令**
@@ -2144,7 +2195,8 @@ Modify `src-tauri/src/lib.rs`：声明 `mod webviews;`，把两个命令加入 `
 mod webviews;
 // invoke_handler 中追加：
 //   webviews::sync_ai_webviews,
-//   webviews::hide_ai_webviews
+//   webviews::hide_ai_webviews,
+//   webviews::reposition_ai_webviews
 ```
 
 - [ ] **Step 5: 编译检查**
@@ -2177,24 +2229,32 @@ git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/webviews.rs src-
 git commit -m "feat: AI webview 承载层核心（Rust add_child + auto_resize）"
 ```
 
-> **GATE**：若 `auto_resize` 在左侧栏(x 偏移)布局下缩放异常（位置错位），降级：去掉 `.auto_resize()`，改为前端监听 resize 调一个 `reposition_ai_webviews` 命令（用 `set_position`/`set_size` 按 `content_size` 重新摆放）。其余逻辑不变。
+> **GATE/备选**：`reposition_ai_webviews` + 前端 ResizeObserver 已作为位置校正主力（Task 15），位置不再仅依赖硬编码 `SIDEBAR_WIDTH`。若 `auto_resize` 在左侧栏(x 偏移)布局下与显式重定位冲突或缩放异常，去掉 `.auto_resize()`、完全依赖已接好的 reposition 即可，无需新增代码。
 
 ---
 
-## Task 15: 主界面接线承载层（前端调用 Rust 命令，手动验证）
+## Task 15: 主界面接线承载层（前端调用 Rust 命令 + 真实矩形重定位，手动验证）
 
 **Files:**
 - Modify: `src/lib/commands.ts`（新增 AI webview 命令封装）
-- Modify: `src/App.tsx`（状态变化时调用命令）
+- Modify: `src/components/ContentArea.tsx`（转发 ref 以测量真实内容区矩形）
+- Modify: `src/App.tsx`（状态变化时同步；挂载/缩放时按真实矩形重定位）
 - Modify: `src/App.test.tsx`（mock 命令）
 
-承载层在 Rust 侧（Task 14）。前端只需在 (enabledProviders, activeId, keepState, showSettings) 变化时调用命令。**无需**测量矩形或监听 resize（`auto_resize` 已处理）。
+承载层在 Rust 侧（Task 14）。前端在 (enabledProviders, activeId, keepState, showSettings) 变化时调 `sync/hide`；并用 `ContentArea` 真实 `getBoundingClientRect()` 调 `reposition_ai_webviews` 校正位置（同步后、ResizeObserver 触发时）。`auto_resize` 负责平滑跟随，`reposition` 保证位置不依赖硬编码常量、布局变化也不错位。
 
 - [ ] **Step 1: commands.ts 新增封装**
 
-Modify `src/lib/commands.ts`，在文件顶部补充类型导入并追加两个函数：
+Modify `src/lib/commands.ts`，在文件顶部补充类型导入并追加函数：
 ```ts
 import type { AiProvider } from "../state/types";
+
+export interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 /** 同步 AI webview：创建/显示/隐藏/销毁 */
 export async function syncAiWebviews(
@@ -2213,44 +2273,117 @@ export async function syncAiWebviews(
 export async function hideAiWebviews(): Promise<void> {
   await invoke("hide_ai_webviews");
 }
+
+/** 按真实内容区矩形重定位 AI webview（校正位置，不依赖硬编码侧栏宽度） */
+export async function repositionAiWebviews(bounds: Bounds): Promise<void> {
+  await invoke("reposition_ai_webviews", { bounds });
+}
 ```
 
-- [ ] **Step 2: App 中接线**
+- [ ] **Step 2: ContentArea 转发 ref**
 
-Modify `src/App.tsx`：导入区追加：
+Modify `src/components/ContentArea.tsx`，改为转发 ref（用于测量真实内容区矩形；`content-area` testid 不变，Task 9 测试仍通过）：
 ```tsx
-import { syncAiWebviews, hideAiWebviews } from "./lib/commands";
+import { forwardRef, type ReactNode } from "react";
+
+interface Props {
+  showSettings: boolean;
+  settings: ReactNode;
+  emptyHint?: string;
+}
+
+export const ContentArea = forwardRef<HTMLDivElement, Props>(function ContentArea(
+  { showSettings, settings, emptyHint },
+  ref
+) {
+  return (
+    <div style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden" }}>
+      {showSettings ? (
+        <div style={{ height: "100%", overflow: "auto" }}>{settings}</div>
+      ) : (
+        <div
+          ref={ref}
+          data-content-area
+          data-testid="content-area"
+          style={{ height: "100%" }}
+        >
+          {emptyHint ? (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-muted)" }}>
+              {emptyHint}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+});
 ```
-在组件内、主题 effect 之后追加承载层同步 effect：
+
+- [ ] **Step 3: App 中接线**
+
+Modify `src/App.tsx`：把 react 导入合并加入 `useRef`，并追加命令导入：
 ```tsx
-  // 同步 AI webview（Rust 侧承载；auto_resize 处理缩放，无需测矩形）
+import { useEffect, useMemo, useRef, useState } from "react";
+import { syncAiWebviews, hideAiWebviews, repositionAiWebviews } from "./lib/commands";
+```
+组件内加 ref 与重定位辅助：
+```tsx
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  const reposition = () => {
+    const el = contentRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    void repositionAiWebviews({
+      x: Math.round(r.left),
+      y: Math.round(r.top),
+      width: Math.round(r.width),
+      height: Math.round(r.height),
+    });
+  };
+```
+承载层同步 effect（主题 effect 之后）：
+```tsx
+  // 同步 AI webview，并按真实内容区矩形校正位置
   useEffect(() => {
     if (!ready) return;
     if (showSettings) {
       void hideAiWebviews();
       return;
     }
-    void syncAiWebviews(enabledProviders, activeId, settings.keepStateOnSwitch);
+    void syncAiWebviews(enabledProviders, activeId, settings.keepStateOnSwitch).then(reposition);
   }, [ready, showSettings, activeId, enabledProviders, settings.keepStateOnSwitch]);
-```
-（不需要 `contentRef`/`readRect`/resize 监听；`ContentArea` 维持 Task 9 的版本即可。）
 
-- [ ] **Step 3: 更新 App 测试 mock**
+  // 内容区尺寸变化时重定位（窗口缩放 / 布局变化）
+  useEffect(() => {
+    if (showSettings) return;
+    const el = contentRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => reposition());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [showSettings]);
+```
+把 `<ContentArea ... />` 改为传 `ref={contentRef}`。
+
+- [ ] **Step 4: 更新 App 测试 mock**
 
 App 现在从 `./lib/commands` 导入。`src/App.test.tsx` 顶部（`import App` 之前）加 mock：
 ```tsx
 vi.mock("./lib/commands", () => ({
   syncAiWebviews: vi.fn().mockResolvedValue(undefined),
   hideAiWebviews: vi.fn().mockResolvedValue(undefined),
+  repositionAiWebviews: vi.fn().mockResolvedValue(undefined),
 }));
 ```
+> jsdom 无 `ResizeObserver`，已在 `src/test/setup.ts` 提供桩（见 Task 1）。
 
-- [ ] **Step 4: 跑前端单测**
+- [ ] **Step 5: 跑前端单测**
 
 Run: `pnpm test`
 Expected: 全绿。
 
-- [ ] **Step 5: 手动验证主流程**
+- [ ] **Step 6: 手动验证主流程**
 
 Run: `pnpm tauri dev`
 操作与预期：
@@ -2259,13 +2392,13 @@ Run: `pnpm tauri dev`
 3. 打开设置 → AI webview 全部隐藏，露出设置页；点某 AI → 恢复显示。
 4. 基础配置里关掉 Claude → 侧栏不再显示，其 webview 被销毁。
 5. 把"切出保留状态"关掉后切换 AI → 切走的 AI 被销毁，切回时重新加载。
-6. 改变窗口大小 → 当前 webview 自动跟随（auto_resize）。
+6. 改变窗口大小 → 当前 webview 跟随（auto_resize 平滑 + reposition 按真实矩形校正，无错位）。
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 7: 提交**
 
 ```bash
-git add src/lib/commands.ts src/App.tsx src/App.test.tsx
-git commit -m "feat: 主界面接线 AI webview 承载层"
+git add src/lib/commands.ts src/components/ContentArea.tsx src/App.tsx src/App.test.tsx
+git commit -m "feat: 主界面接线 AI webview 承载层（含真实矩形重定位）"
 ```
 
 ---
@@ -2406,20 +2539,26 @@ use serde::Deserialize;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
+const DEFAULT_QUICK_ASK: &str = "CommandOrControl+Space";
+const DEFAULT_SHOW_MAIN: &str = "CommandOrControl+Shift+Space";
+const DEFAULT_QUICK_ASK_PROVIDER: &str = "chatgpt";
+
+fn default_quick_ask() -> String { DEFAULT_QUICK_ASK.into() }
+fn default_show_main() -> String { DEFAULT_SHOW_MAIN.into() }
+fn default_quick_ask_provider() -> String { DEFAULT_QUICK_ASK_PROVIDER.into() }
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Hotkeys {
-    #[serde(rename = "quickAsk")]
+    #[serde(rename = "quickAsk", default = "default_quick_ask")]
     pub quick_ask: String,
-    #[serde(rename = "showMain")]
+    #[serde(rename = "showMain", default = "default_show_main")]
     pub show_main: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct StoredSettings {
-    pub hotkeys: Hotkeys,
-    #[serde(rename = "quickAskProviderId")]
-    pub quick_ask_provider_id: String,
-    pub providers: Vec<ProviderLite>,
+impl Default for Hotkeys {
+    fn default() -> Self {
+        Self { quick_ask: default_quick_ask(), show_main: default_show_main() }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2428,22 +2567,35 @@ pub struct ProviderLite {
     pub url: String,
 }
 
-const DEFAULT_QUICK_ASK: &str = "CommandOrControl+Space";
-const DEFAULT_SHOW_MAIN: &str = "CommandOrControl+Shift+Space";
-
-/// 读取设置；store 不存在或解析失败时返回默认快捷键
-pub fn read_settings(app: &AppHandle) -> StoredSettings {
-    let fallback = StoredSettings {
-        hotkeys: Hotkeys { quick_ask: DEFAULT_QUICK_ASK.into(), show_main: DEFAULT_SHOW_MAIN.into() },
-        quick_ask_provider_id: "chatgpt".into(),
-        providers: vec![ProviderLite { id: "chatgpt".into(), url: "https://chatgpt.com".into() }],
-    };
-    let Ok(store) = app.store("settings.json") else { return fallback };
-    let Some(value) = store.get("settings") else { return fallback };
-    serde_json::from_value::<StoredSettings>(value).unwrap_or(fallback)
+#[derive(Debug, Clone, Deserialize)]
+pub struct StoredSettings {
+    #[serde(default)]
+    pub hotkeys: Hotkeys,
+    #[serde(rename = "quickAskProviderId", default = "default_quick_ask_provider")]
+    pub quick_ask_provider_id: String,
+    #[serde(default)]
+    pub providers: Vec<ProviderLite>,
 }
 
-/// 取快捷提问窗要加载的 url
+impl Default for StoredSettings {
+    fn default() -> Self {
+        Self {
+            hotkeys: Hotkeys::default(),
+            quick_ask_provider_id: default_quick_ask_provider(),
+            providers: Vec::new(),
+        }
+    }
+}
+
+/// 读取设置；逐字段容错：`#[serde(default)]` 保证缺字段用默认而非整体失败，
+/// 仅在 store 不存在或 JSON 完全无法解析时才整体回退默认。
+pub fn read_settings(app: &AppHandle) -> StoredSettings {
+    let Ok(store) = app.store("settings.json") else { return StoredSettings::default() };
+    let Some(value) = store.get("settings") else { return StoredSettings::default() };
+    serde_json::from_value::<StoredSettings>(value).unwrap_or_default()
+}
+
+/// 取快捷提问窗要加载的 url（找不到则用 chatgpt 兜底）
 pub fn quick_ask_url(s: &StoredSettings) -> String {
     s.providers
         .iter()
@@ -2457,34 +2609,42 @@ pub fn quick_ask_url(s: &StoredSettings) -> String {
 
 Create `src-tauri/src/shortcuts.rs`:
 ```rust
-use tauri::{AppHandle, Manager};
+use serde::Serialize;
+use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::quick_ask;
 use crate::settings_io::read_settings;
-use crate::tray::show_main;
 
-/// 注销全部并按当前设置重新注册两个全局快捷键
-pub fn register_from_settings(app: &AppHandle) {
-    let gs = app.global_shortcut();
-    let _ = gs.unregister_all();
+/// 每个快捷键的注册结果，回传前端用于显示冲突/失败
+#[derive(Debug, Clone, Serialize)]
+pub struct HotkeyRegistration {
+    #[serde(rename = "quickAsk")]
+    pub quick_ask: bool,
+    #[serde(rename = "showMain")]
+    pub show_main: bool,
+}
 
+/// 注销全部并按当前设置重新注册；返回每个键是否注册成功
+pub fn register_from_settings(app: &AppHandle) -> HotkeyRegistration {
+    let _ = app.global_shortcut().unregister_all();
     let s = read_settings(app);
+    HotkeyRegistration {
+        quick_ask: register_one(app, &s.hotkeys.quick_ask, quick_ask::toggle),
+        show_main: register_one(app, &s.hotkeys.show_main, crate::tray::show_main),
+    }
+}
 
-    if let Ok(sc) = s.hotkeys.quick_ask.parse::<Shortcut>() {
-        let _ = gs.on_shortcut(sc, move |app, _shortcut, event| {
+/// 解析并注册单个快捷键；解析失败或注册失败（如与系统/输入法冲突）返回 false
+fn register_one(app: &AppHandle, accelerator: &str, action: fn(&AppHandle)) -> bool {
+    let Ok(shortcut) = accelerator.parse::<Shortcut>() else { return false };
+    app.global_shortcut()
+        .on_shortcut(shortcut, move |app, _sc, event| {
             if event.state == ShortcutState::Pressed {
-                quick_ask::toggle(app);
+                action(app);
             }
-        });
-    }
-    if let Ok(sc) = s.hotkeys.show_main.parse::<Shortcut>() {
-        let _ = gs.on_shortcut(sc, move |app, _shortcut, event| {
-            if event.state == ShortcutState::Pressed {
-                show_main(app);
-            }
-        });
-    }
+        })
+        .is_ok()
 }
 ```
 
@@ -2499,8 +2659,8 @@ use crate::shortcuts;
 use crate::tray;
 
 #[tauri::command]
-pub fn apply_hotkeys(app: AppHandle) {
-    shortcuts::register_from_settings(&app);
+pub fn apply_hotkeys(app: AppHandle) -> shortcuts::HotkeyRegistration {
+    shortcuts::register_from_settings(&app)
 }
 
 #[tauri::command]
@@ -2625,7 +2785,8 @@ pub fn toggle(app: &AppHandle) {
         return;
     }
     let url = target_url(app);
-    let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::External(url.parse().unwrap()))
+    let Ok(parsed) = url.parse() else { return };
+    let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::External(parsed))
         .title("快捷提问")
         .inner_size(WIDTH, HEIGHT)
         .decorations(false)
@@ -2639,12 +2800,14 @@ pub fn toggle(app: &AppHandle) {
     }
 }
 
-/// 设置 url（下次创建生效；若已存在则导航）
+/// 设置 url（校验后保存；下次创建生效；若已存在则直接导航）
 pub fn set_url(app: &AppHandle, url: String) {
+    // 校验 URL，非法直接忽略（避免 panic / 坏地址）
+    let Ok(parsed) = url.parse::<tauri::Url>() else { return };
     let state = app.state::<AppState>();
-    *state.quick_ask_url.lock().unwrap() = Some(url.clone());
+    *state.quick_ask_url.lock().unwrap() = Some(url);
     if let Some(win) = app.get_webview_window(LABEL) {
-        let _ = win.eval(&format!("window.location.replace('{}')", url.replace('\'', "\\'")));
+        let _ = win.navigate(parsed);
     }
 }
 

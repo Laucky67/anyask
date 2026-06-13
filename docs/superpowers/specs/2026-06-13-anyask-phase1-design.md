@@ -115,21 +115,22 @@ lib/
 
 ```
 lib.rs          组装：插件、托盘、setup（开机从 store 读取并武装快捷键）、注册命令
-state.rs        AppState：providerId -> webview 标签映射、当前激活 id、内容区矩形
-webviews.rs     AI webview 管理器：按需创建/显示/隐藏/销毁/定位到内容区
-shortcuts.rs    从设置注册/注销全局快捷键 + 回调
+state.rs        AppState：quick-ask url 缓存等共享状态
+webviews.rs     AI webview 承载层：add_child + auto_resize 创建/显示/隐藏/销毁；reposition 按真实内容区矩形校正
+shortcuts.rs    从设置注册/注销全局快捷键 + 回调；返回每个键的注册结果
+settings_io.rs  Rust 侧读取 store（逐字段容错；仅读 hotkeys/quickAskProviderId/providers）
 tray.rs         托盘图标 + 菜单（显示主界面/退出）、关闭 -> 隐藏到托盘
-quick_ask.rs    快捷提问窗的创建/显隐切换/屏幕中下居中定位
-commands.rs     #[tauri::command]：set_active_provider / set_content_bounds /
-                set_keep_state / apply_hotkeys / toggle_quick_ask / set_quick_provider 等
+quick_ask.rs    快捷提问窗的创建/显隐切换/屏幕中下居中、校验后 navigate
+commands.rs     #[tauri::command]：sync_ai_webviews / hide_ai_webviews / reposition_ai_webviews /
+                apply_hotkeys / show_main_window / toggle_quick_ask / set_quick_ask_provider
 ```
 
 ## 7. 关键行为流
 
 1. **启动**：Rust `setup` 读 store（空则写入默认）→ 武装全局快捷键 → 建主窗口加载 React。前端载入设置进 Context，应用主题与语言。默认激活**第一个 enabled 的 provider**；若无任何启用项，内容区显示空状态提示。
-2. **选 AI**：侧栏点击 → `set_active_provider(id)` + 上报内容区矩形 → Rust 确保该 AI 的 webview 存在（首次**异步**创建，规避 Windows 死锁）→ 定位覆盖内容区、提到最前；其余 webview 按 `keepStateOnSwitch` 决定隐藏（默认）还是销毁。
-3. **开设置**：前端切到设置路由 → 通知 Rust 隐藏所有 AI webview → 露出 React 设置页。
-4. **缩放/最大化**：前端监听窗口尺寸变化上报新矩形 → Rust 重定位激活 webview；额外监听最大化/还原事件做重定位（修复 unstable 的位置 bug）。
+2. **选 AI**：侧栏点击 → `sync_ai_webviews(providers, activeId, keepState)` → Rust 确保该 AI 的 webview 存在（`add_child`，异步命令规避 Windows 死锁，`auto_resize` 跟随）→ 显示并提到最前；其余按 `keepStateOnSwitch` 隐藏（默认）或销毁。随后前端用 `ContentArea` 真实矩形调 `reposition_ai_webviews` 校正位置。
+3. **开设置**：前端切到设置路由 → 通知 Rust `hide_ai_webviews` 隐藏所有 AI webview → 露出 React 设置页。
+4. **缩放/布局变化**：前端对 `ContentArea` 用 ResizeObserver，尺寸变化时调 `reposition_ai_webviews(真实矩形)`；`auto_resize` 同时提供原生平滑跟随。位置不依赖硬编码侧栏宽度。
 5. **改快捷键**：捕获组合 → 存 store → `apply_hotkeys()` 重新注册；两个键互相冲突时提示。
 6. **切换启用**：改 `enabled` → 存 store → 侧栏重渲染；若禁用了当前激活的 AI，则切走并销毁其 webview。
 7. **快捷提问键**：全局快捷键 → Rust 切换 quick-ask 窗显隐（首次按默认 provider 网址创建），定位屏幕中下居中。
@@ -185,11 +186,11 @@ commands.rs     #[tauri::command]：set_active_provider / set_content_bounds /
 承载层的具体做法已在该 MVP 验证可行，本项目直接移植：
 
 - **Rust 侧创建子 webview**：`WebviewBuilder::new(label, WebviewUrl::External(url))` + `window.add_child(builder, LogicalPosition, LogicalSize)`；通过 `app.get_window("main")` 取窗口、`app.get_webview(label)` 取子 webview。
-- **`.auto_resize()`**：子 webview 自动跟随主窗口缩放，**无需**前端测量内容区矩形或监听 resize。
+- **`.auto_resize()`**：子 webview 原生平滑跟随主窗口缩放。在此之上，前端用 `ContentArea` 真实矩形 + `ResizeObserver` 调 `reposition_ai_webviews` 校正位置，使位置不依赖硬编码 `SIDEBAR_WIDTH`、布局变化也不错位（采纳 MVP 复审建议）。
 - **切换**：`webview.show() / hide() / set_focus()`，切换是 Rust 命令。
 - **布局**：MVP 是顶部工具栏（offset y=56）；Anyask 改为左侧栏，子 webview 覆盖 `LogicalPosition(SIDEBAR_WIDTH=64, 0)` 到窗口右下角，`SIDEBAR_WIDTH` 必须与前端 `--sidebar-w` 一致。
 - **权限**：创建在 Rust 侧，**不需要**额外 webview 权限，`capabilities` 仅 `core:default` 等即可。
 - **登录态**：默认数据目录共享，登录态天然持久化；快捷提问窗与主程序共享。
 - **构建坑**：`Cargo.toml` 须锁定 `time = "=0.3.47"`（0.3.48 经 cookie 0.18.1 触发 Tauri 依赖树的 trait coherence 冲突）。
 - **窗口级操作走 `get_window("main")`**：多 webview 模式下 main 承载多个 webview，托盘「显示主界面」等窗口操作用 `get_window` 而非 `get_webview_window`。
-- 降级预案：若 `auto_resize` 在左侧栏布局表现异常，去掉它并改用前端 resize 监听 + `set_position/set_size` 重定位命令。
+- 降级预案：若 `auto_resize` 与显式重定位冲突或在 x 偏移布局下异常，去掉 `.auto_resize()`，完全依赖已实现的 `reposition_ai_webviews` + ResizeObserver 即可，无需新增代码。
