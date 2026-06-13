@@ -2,6 +2,7 @@ import { useSettings } from "../../state/SettingsContext";
 import { useT } from "../../i18n";
 import { Toggle } from "../../components/Toggle";
 import { ProviderLogo } from "../../components/ProviderLogo";
+import { setQuickAskProvider } from "../../lib/commands";
 import type { ThemeMode } from "../../state/types";
 
 export function BasicSettings() {
@@ -94,7 +95,7 @@ export function BasicSettings() {
             const id = e.target.value;
             const url = settings.providers.find((p) => p.id === id)?.url ?? "";
             updateSettings({ quickAskProviderId: id });
-            void import("../../lib/commands").then((m) => m.setQuickAskProvider(url));
+            void setQuickAskProvider(url);
           }}
         >
           {settings.providers.map((p) => (
