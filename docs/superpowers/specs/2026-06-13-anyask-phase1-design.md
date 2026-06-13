@@ -179,3 +179,17 @@ commands.rs     #[tauri::command]：set_active_provider / set_content_bounds /
 | AI 配置范围（本期） | 仅编辑现有 3 个，新增/删除后续再做 |
 | 主窗口默认尺寸 | 1000×666 |
 | 快捷提问窗尺寸 | 400×600 |
+
+## 12. 实现备注（来自 MVP `../TestTauri/testgpt` 的已验证结论）
+
+承载层的具体做法已在该 MVP 验证可行，本项目直接移植：
+
+- **Rust 侧创建子 webview**：`WebviewBuilder::new(label, WebviewUrl::External(url))` + `window.add_child(builder, LogicalPosition, LogicalSize)`；通过 `app.get_window("main")` 取窗口、`app.get_webview(label)` 取子 webview。
+- **`.auto_resize()`**：子 webview 自动跟随主窗口缩放，**无需**前端测量内容区矩形或监听 resize。
+- **切换**：`webview.show() / hide() / set_focus()`，切换是 Rust 命令。
+- **布局**：MVP 是顶部工具栏（offset y=56）；Anyask 改为左侧栏，子 webview 覆盖 `LogicalPosition(SIDEBAR_WIDTH=64, 0)` 到窗口右下角，`SIDEBAR_WIDTH` 必须与前端 `--sidebar-w` 一致。
+- **权限**：创建在 Rust 侧，**不需要**额外 webview 权限，`capabilities` 仅 `core:default` 等即可。
+- **登录态**：默认数据目录共享，登录态天然持久化；快捷提问窗与主程序共享。
+- **构建坑**：`Cargo.toml` 须锁定 `time = "=0.3.47"`（0.3.48 经 cookie 0.18.1 触发 Tauri 依赖树的 trait coherence 冲突）。
+- **窗口级操作走 `get_window("main")`**：多 webview 模式下 main 承载多个 webview，托盘「显示主界面」等窗口操作用 `get_window` 而非 `get_webview_window`。
+- 降级预案：若 `auto_resize` 在左侧栏布局表现异常，去掉它并改用前端 resize 监听 + `set_position/set_size` 重定位命令。

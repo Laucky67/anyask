@@ -4,7 +4,7 @@
 
 **Goal:** 实现 Anyask 第一阶段：一个 Tauri 桌面端，在单窗口内通过侧栏切换多个 AI 官网（各自保留登录态），含设置页（基础/AI/快捷键）、系统托盘、全局快捷键、快捷提问悬浮窗。
 
-**Architecture:** 主窗口承载 React 外壳（侧栏 + 内容区 + 设置页）；每个 AI 是覆盖在内容区上方的子 webview（Tauri `unstable` 多 webview），由前端「承载层」模块统一管理。设置持久化用 `tauri-plugin-store`（单一数据源），全局快捷键与托盘在 Rust 侧。承载层做隔离，便于将来降级到「多窗口」方案。
+**Architecture:** 主窗口承载 React 外壳（侧栏 + 内容区 + 设置页）；每个 AI 是覆盖在内容区上方的子 webview（Tauri `unstable` 多 webview，Rust 侧 `add_child` + `auto_resize`），由 Rust 承载层（`webviews.rs`）统一管理，前端经命令驱动。设置持久化用 `tauri-plugin-store`（单一数据源），全局快捷键与托盘在 Rust 侧。承载层做隔离，便于将来降级到「多窗口」方案。该多 webview 方案已由同目录 MVP（`../TestTauri/testgpt`）验证可行。
 
 **Tech Stack:** Tauri 2 (features=`unstable`) + React 19 + TypeScript + Vite 7 + pnpm；测试用 Vitest + @testing-library/react；插件 `tauri-plugin-store`、`tauri-plugin-global-shortcut`。
 
@@ -40,8 +40,7 @@ i18n/
 lib/
   hotkeys.ts                  键盘事件 -> 加速器字符串、校验、友好显示、冲突检测
   theme.ts                    resolveTheme()/applyTheme()/watchSystemTheme()
-  webviews.ts                 AI 子 webview 承载层：ensure/show/hide/destroy/position
-  commands.ts                 invoke(...) 的类型化封装（调用 Rust 命令）
+  commands.ts                 invoke(...) 的类型化封装（AI webview 同步 + 快捷键/窗口/快捷提问）
 components/
   Toggle.tsx                  滑动开关
   ProviderLogo.tsx            有图用图，无图渲染「首字母 + 底色」
@@ -60,6 +59,7 @@ test/
 ```
 lib.rs            组装：插件、托盘、setup（读 store 武装快捷键）、注册命令
 state.rs          AppState：quick-ask provider 缓存等共享状态
+webviews.rs       AI webview 承载层：add_child + auto_resize 创建/显示/隐藏/销毁（sync_ai_webviews / hide_ai_webviews）
 commands.rs       #[tauri::command]：apply_hotkeys / show_main_window / toggle_quick_ask / set_quick_ask_provider
 shortcuts.rs      从 store 读取并注册/重注册全局快捷键 + 回调
 tray.rs           托盘图标 + 菜单（显示主界面/退出）、关闭->隐藏到托盘
@@ -2009,273 +2009,244 @@ git commit -m "feat: 快捷键设置捕获 UI 与命令封装"
 
 ---
 
-## Task 14: 启用 unstable 多 webview 并做承载层 SPIKE（手动验证）
+## Task 14: AI webview 承载层核心 —— Rust 侧（移植已验证的 MVP 方案，手动验证）
 
 **Files:**
 - Modify: `src-tauri/Cargo.toml`
-- Modify: `src-tauri/capabilities/default.json`
+- Create: `src-tauri/src/webviews.rs`
+- Modify: `src-tauri/src/lib.rs`
 
-**目的**：在构建完整承载层前，先验证「从前端用 JS `Webview` 在主窗口内创建覆盖某区域的子 webview、加载 chatgpt.com、登录态可持久化」。这是全项目最大技术风险点，必须先 de-risk。
+**背景**：本项目的多 webview 方案已在同目录 MVP（`../TestTauri/testgpt`）验证可行：Rust 侧用 `WebviewBuilder` + `window.add_child(...)` 加子 webview，`.auto_resize()` 自动跟随窗口缩放，`webview.show()/hide()/set_focus()` 切换，登录态默认持久化，且**无需额外 webview 权限**（创建在 Rust 侧）。本任务把该方案移植为 Anyask 的左侧栏布局。
 
-- [ ] **Step 1: 开启 unstable 特性**
+> 关键常量：`SIDEBAR_WIDTH = 64.0`，必须与前端 CSS `--sidebar-w: 64px` 一致。AI webview 覆盖 `LogicalPosition(SIDEBAR_WIDTH, 0)` 到窗口右下角。
 
-Modify `src-tauri/Cargo.toml` 的 tauri 依赖：
+- [ ] **Step 1: Cargo 依赖（unstable + time 锁定）**
+
+Modify `src-tauri/Cargo.toml` 的 `[dependencies]`：
 ```toml
 tauri = { version = "2", features = ["unstable"] }
+# 锁定 time < 0.3.48：0.3.48 经 cookie 0.18.1 触发 Tauri 依赖树 trait coherence 冲突（MVP 已踩坑）
+time = "=0.3.47"
 ```
 
-- [ ] **Step 2: 放开 webview 创建权限**
+- [ ] **Step 2: 确认权限无需变更**
 
-Modify `src-tauri/capabilities/default.json` 的 `permissions`，加入 webview 相关权限：
+`src-tauri/capabilities/default.json` **不需要**新增 webview 权限（创建在 Rust 侧，不走 JS API）。保持 Task 3 的：
 ```json
-"permissions": [
-  "core:default",
-  "opener:default",
-  "store:default",
-  "core:webview:default",
-  "core:webview:allow-create-webview",
-  "core:window:default"
-]
+"permissions": ["core:default", "opener:default", "store:default"]
 ```
-> 注：确切权限标识符以 `pnpm tauri dev` 启动时控制台报的「permission X not found / denied」为准，按提示补齐。
 
-- [ ] **Step 3: 在 dev 控制台做 spike**
+- [ ] **Step 3: 实现 webviews.rs**
 
-Run: `pnpm tauri dev`
-在主窗口开发者工具控制台执行：
+Create `src-tauri/src/webviews.rs`:
+```rust
+use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl};
+
+pub const SIDEBAR_WIDTH: f64 = 64.0; // 必须与前端 --sidebar-w 一致
+const PREFIX: &str = "ai-";
+
+pub fn label(id: &str) -> String {
+    format!("{PREFIX}{id}")
+}
+
+/// 内容区（侧栏右侧）逻辑尺寸
+fn content_size(window: &tauri::Window) -> tauri::Result<LogicalSize<f64>> {
+    let scale = window.scale_factor()?;
+    let inner = window.inner_size()?.to_logical::<f64>(scale);
+    Ok(LogicalSize::new(
+        (inner.width - SIDEBAR_WIDTH).max(1.0),
+        inner.height.max(1.0),
+    ))
+}
+
+/// 确保某 provider 的 webview 存在；不存在则创建（覆盖内容区，auto_resize 跟随窗口）
+fn ensure(app: &AppHandle, id: &str, url: &str, visible: bool) -> Result<(), String> {
+    if app.get_webview(&label(id)).is_some() {
+        return Ok(());
+    }
+    let window = app.get_window("main").ok_or("main window not found")?;
+    let size = content_size(&window).map_err(|e| e.to_string())?;
+    let parsed = url.parse().map_err(|_| format!("invalid url: {url}"))?;
+    let builder = WebviewBuilder::new(label(id), WebviewUrl::External(parsed))
+        .auto_resize()
+        .focused(visible);
+    let webview = window
+        .add_child(builder, LogicalPosition::new(SIDEBAR_WIDTH, 0.0), size)
+        .map_err(|e| e.to_string())?;
+    if !visible {
+        webview.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+pub struct ProviderArg {
+    pub id: String,
+    pub url: String,
+}
+
+/// 同步 AI webview 现状到期望：
+/// - 为每个 enabled provider 确保存在
+/// - active 显示并聚焦，其余按 keep_state 隐藏(true)或销毁(false)
+/// - 不在 enabled 列表里的既有 AI webview 一律销毁
+#[tauri::command]
+pub async fn sync_ai_webviews(
+    app: AppHandle,
+    providers: Vec<ProviderArg>,
+    active_id: Option<String>,
+    keep_state: bool,
+) -> Result<(), String> {
+    let enabled_labels: std::collections::HashSet<String> =
+        providers.iter().map(|p| label(&p.id)).collect();
+
+    for (lbl, wv) in app.webviews() {
+        if lbl.starts_with(PREFIX) && !enabled_labels.contains(&lbl) {
+            let _ = wv.close();
+        }
+    }
+
+    for p in &providers {
+        let is_active = active_id.as_deref() == Some(p.id.as_str());
+        if is_active {
+            ensure(&app, &p.id, &p.url, true)?;
+            if let Some(wv) = app.get_webview(&label(&p.id)) {
+                wv.show().map_err(|e| e.to_string())?;
+                wv.set_focus().map_err(|e| e.to_string())?;
+            }
+        } else if keep_state {
+            ensure(&app, &p.id, &p.url, false)?;
+            if let Some(wv) = app.get_webview(&label(&p.id)) {
+                wv.hide().map_err(|e| e.to_string())?;
+            }
+        } else if let Some(wv) = app.get_webview(&label(&p.id)) {
+            let _ = wv.close();
+        }
+    }
+    Ok(())
+}
+
+/// 隐藏全部 AI webview（打开设置时用）
+#[tauri::command]
+pub async fn hide_ai_webviews(app: AppHandle) -> Result<(), String> {
+    for (lbl, wv) in app.webviews() {
+        if lbl.starts_with(PREFIX) {
+            let _ = wv.hide();
+        }
+    }
+    Ok(())
+}
+```
+
+- [ ] **Step 4: 在 lib.rs 注册命令**
+
+Modify `src-tauri/src/lib.rs`：声明 `mod webviews;`，把两个命令加入 `invoke_handler`（与现有命令并列）：
+```rust
+mod webviews;
+// invoke_handler 中追加：
+//   webviews::sync_ai_webviews,
+//   webviews::hide_ai_webviews
+```
+
+- [ ] **Step 5: 编译检查**
+
+Run: `cd src-tauri && cargo check`
+Expected: 编译通过（首次因 unstable 拉取 wry/webview 依赖，编译较久）。
+
+- [ ] **Step 6: 手动验证核心（de-risk）**
+
+Run: `pnpm tauri dev`，在主窗口开发者工具控制台执行：
 ```js
-const { Webview } = await import("@tauri-apps/api/webview");
-const { getCurrentWindow } = await import("@tauri-apps/api/window");
-const w = getCurrentWindow();
-const wv = new Webview(w, "spike-chatgpt", { url: "https://chatgpt.com", x: 80, y: 0, width: 800, height: 600 });
-wv.once("tauri://created", () => console.log("created"));
-wv.once("tauri://error", (e) => console.error("error", e));
+const { invoke } = await import("@tauri-apps/api/core");
+await invoke("sync_ai_webviews", {
+  providers: [{ id: "chatgpt", url: "https://chatgpt.com" }, { id: "claude", url: "https://claude.ai" }],
+  activeId: "chatgpt",
+  keepState: true,
+});
 ```
-Expected:
-- 控制台打印 `created`，主窗口右侧出现 ChatGPT 页面（覆盖在 React 外壳上，左侧仍可见外壳）。
-- 在该 webview 内登录 ChatGPT（邮箱或 Google）。
-- 关闭应用后重新 `pnpm tauri dev`，再次执行上面的脚本，**仍是已登录状态**（登录态持久化）。
+Expected：
+- 主窗口右侧(x≥64)出现 ChatGPT，左侧 64px 仍是 React 外壳。
+- 再执行一次、把 `activeId` 改为 `"claude"` → 切到 Claude，ChatGPT 隐藏但保留。
+- 拖动窗口改变大小 → webview 自动跟随缩放（`auto_resize` 生效，无需手动重定位）。
+- 登录 ChatGPT 后重启应用再执行 → 仍是登录态。
+- 执行 `await invoke("hide_ai_webviews")` → AI webview 全部隐藏，露出 React 外壳。
 
-- [ ] **Step 4: 验证显隐/定位 API**
+- [ ] **Step 7: 提交**
 
-继续在控制台测试：
-```js
-await wv.hide();         // 应隐藏
-await wv.show();         // 应重新显示
-const { LogicalPosition, LogicalSize } = await import("@tauri-apps/api/dpi");
-await wv.setPosition(new LogicalPosition(80, 0));
-await wv.setSize(new LogicalSize(600, 400));
-await wv.close();        // 应销毁
-```
-Expected: 各操作生效。**记录**：若 `hide()/show()` 不可用，则承载层改用「移到屏幕外 + 尺寸为 0」实现隐藏（在 Task 15 据此调整）。
-
-- [ ] **Step 5: 记录 spike 结论**
-
-把结论（API 是否可用、隐藏用 hide 还是离屏、权限标识符）追加到设计文档末尾的「实现备注」小节，并提交：
 ```bash
-git add src-tauri/Cargo.toml src-tauri/capabilities/default.json docs/superpowers/specs/2026-06-13-anyask-phase1-design.md
-git commit -m "chore: 开启 unstable 多 webview 并完成承载层 spike 验证"
+git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/webviews.rs src-tauri/src/lib.rs
+git commit -m "feat: AI webview 承载层核心（Rust add_child + auto_resize）"
 ```
 
-> **GATE**：若 spike 失败（无法创建/登录态不持久/定位不可用），停止后续任务，回到设计降级到方案 B（多窗口），并据此改写 Task 15。
+> **GATE**：若 `auto_resize` 在左侧栏(x 偏移)布局下缩放异常（位置错位），降级：去掉 `.auto_resize()`，改为前端监听 resize 调一个 `reposition_ai_webviews` 命令（用 `set_position`/`set_size` 按 `content_size` 重新摆放）。其余逻辑不变。
 
 ---
 
-## Task 15: AI 子 webview 承载层与主界面接线（手动验证）
+## Task 15: 主界面接线承载层（前端调用 Rust 命令，手动验证）
 
 **Files:**
-- Create: `src/lib/webviews.ts`
-- Modify: `src/App.tsx`
-- Modify: `src/components/ContentArea.tsx`（暴露 ref 以测量矩形）
+- Modify: `src/lib/commands.ts`（新增 AI webview 命令封装）
+- Modify: `src/App.tsx`（状态变化时调用命令）
+- Modify: `src/App.test.tsx`（mock 命令）
 
-承载层职责：根据 enabled providers、当前 activeId、keepStateOnSwitch、内容区矩形，确保子 webview 的存在/显隐/定位。对外只暴露 `syncWebviews(args)` 与 `hideAllWebviews()`。
+承载层在 Rust 侧（Task 14）。前端只需在 (enabledProviders, activeId, keepState, showSettings) 变化时调用命令。**无需**测量矩形或监听 resize（`auto_resize` 已处理）。
 
-- [ ] **Step 1: 实现 webviews.ts**
+- [ ] **Step 1: commands.ts 新增封装**
 
-Create `src/lib/webviews.ts`（依据 Task 14 spike 结论；下例假设 `hide()/show()` 可用，否则按结论改为离屏方案）:
+Modify `src/lib/commands.ts`，在文件顶部补充类型导入并追加两个函数：
 ```ts
-import { Webview } from "@tauri-apps/api/webview";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import type { AiProvider } from "../state/types";
 
-const PREFIX = "ai-";
-const label = (id: string) => `${PREFIX}${id}`;
-
-export interface Rect { x: number; y: number; width: number; height: number; }
-
-interface SyncArgs {
-  providers: AiProvider[];   // 仅 enabled
-  activeId: string | null;
-  keepState: boolean;
-  rect: Rect;
-}
-
-async function getWebview(id: string): Promise<Webview | null> {
-  return await Webview.getByLabel(label(id));
-}
-
-async function ensureWebview(p: AiProvider, rect: Rect): Promise<Webview> {
-  const existing = await getWebview(p.id);
-  if (existing) return existing;
-  const wv = new Webview(getCurrentWindow(), label(p.id), {
-    url: p.url,
-    x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+/** 同步 AI webview：创建/显示/隐藏/销毁 */
+export async function syncAiWebviews(
+  providers: AiProvider[],
+  activeId: string | null,
+  keepState: boolean
+): Promise<void> {
+  await invoke("sync_ai_webviews", {
+    providers: providers.map((p) => ({ id: p.id, url: p.url })),
+    activeId,
+    keepState,
   });
-  await new Promise<void>((resolve, reject) => {
-    wv.once("tauri://created", () => resolve());
-    wv.once("tauri://error", (e) => reject(e));
-  });
-  return wv;
 }
 
-async function position(wv: Webview, rect: Rect): Promise<void> {
-  await wv.setPosition(new LogicalPosition(rect.x, rect.y));
-  await wv.setSize(new LogicalSize(rect.width, rect.height));
-}
-
-/** 让 webview 现状与期望一致 */
-export async function syncWebviews({ providers, activeId, keepState, rect }: SyncArgs): Promise<void> {
-  // 1. 处理每个 enabled provider
-  for (const p of providers) {
-    const isActive = p.id === activeId;
-    if (isActive) {
-      const wv = await ensureWebview(p, rect);
-      await position(wv, rect);
-      await wv.show();
-      await wv.setFocus();
-    } else {
-      const wv = await getWebview(p.id);
-      if (!wv) continue;
-      if (keepState) {
-        await wv.hide();
-      } else {
-        await wv.close();
-      }
-    }
-  }
-  // 2. 已禁用/已删除的 provider：销毁其 webview
-  const enabledIds = new Set(providers.map((p) => p.id));
-  // 注：无法枚举全部 webview 时，禁用 provider 的清理在 App 层用上一次列表 diff 完成（见 App 接线）。
-  void enabledIds;
-}
-
-/** 打开设置时隐藏全部 AI webview */
-export async function hideAllWebviews(providerIds: string[]): Promise<void> {
-  for (const id of providerIds) {
-    const wv = await getWebview(id);
-    if (wv) await wv.hide();
-  }
-}
-
-/** 显式销毁某 provider 的 webview（禁用/删除时用） */
-export async function destroyWebview(id: string): Promise<void> {
-  const wv = await getWebview(id);
-  if (wv) await wv.close();
+/** 隐藏全部 AI webview（打开设置时） */
+export async function hideAiWebviews(): Promise<void> {
+  await invoke("hide_ai_webviews");
 }
 ```
 
-- [ ] **Step 2: 让 ContentArea 能测量矩形**
+- [ ] **Step 2: App 中接线**
 
-Modify `src/components/ContentArea.tsx`：给非设置态的容器加 `ref` 转发，并导出一个读取矩形的 hook。改为：
+Modify `src/App.tsx`：导入区追加：
 ```tsx
-import { forwardRef, type ReactNode } from "react";
-
-interface Props {
-  showSettings: boolean;
-  settings: ReactNode;
-  emptyHint?: string;
-}
-
-export const ContentArea = forwardRef<HTMLDivElement, Props>(function ContentArea(
-  { showSettings, settings, emptyHint },
-  ref
-) {
-  return (
-    <div style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden" }}>
-      {showSettings ? (
-        <div style={{ height: "100%", overflow: "auto" }}>{settings}</div>
-      ) : (
-        <div
-          ref={ref}
-          data-content-area
-          data-testid="content-area"
-          style={{ height: "100%" }}
-        >
-          {emptyHint ? (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-muted)" }}>
-              {emptyHint}
-            </div>
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
-});
+import { syncAiWebviews, hideAiWebviews } from "./lib/commands";
 ```
-
-- [ ] **Step 3: 在 App 中接线承载层**
-
-Modify `src/App.tsx`：测量内容区矩形，在 activeId/showSettings/providers/keepState/窗口尺寸变化时调用承载层；处理禁用 provider 的清理。在文件顶部加导入并扩展逻辑：
+在组件内、主题 effect 之后追加承载层同步 effect：
 ```tsx
-import { useEffect, useMemo, useRef, useState } from "react";
-import { syncWebviews, hideAllWebviews, destroyWebview, type Rect } from "./lib/webviews";
-// ... 其余导入同前
-
-function readRect(el: HTMLDivElement): Rect {
-  const r = el.getBoundingClientRect();
-  return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
-}
-```
-在组件内：
-```tsx
-  const contentRef = useRef<HTMLDivElement>(null);
-  const prevEnabledIds = useRef<string[]>([]);
-
-  // 同步承载层
+  // 同步 AI webview（Rust 侧承载；auto_resize 处理缩放，无需测矩形）
   useEffect(() => {
     if (!ready) return;
     if (showSettings) {
-      void hideAllWebviews(enabledProviders.map((p) => p.id));
+      void hideAiWebviews();
       return;
     }
-    const el = contentRef.current;
-    if (!el) return;
-    const rect = readRect(el);
-    void syncWebviews({ providers: enabledProviders, activeId, keepState: settings.keepStateOnSwitch, rect });
-
-    // 清理被禁用/移除的 provider
-    const curIds = new Set(enabledProviders.map((p) => p.id));
-    for (const id of prevEnabledIds.current) {
-      if (!curIds.has(id)) void destroyWebview(id);
-    }
-    prevEnabledIds.current = enabledProviders.map((p) => p.id);
+    void syncAiWebviews(enabledProviders, activeId, settings.keepStateOnSwitch);
   }, [ready, showSettings, activeId, enabledProviders, settings.keepStateOnSwitch]);
-
-  // 窗口尺寸变化时重新定位
-  useEffect(() => {
-    if (showSettings) return;
-    const onResize = () => {
-      const el = contentRef.current;
-      if (!el) return;
-      void syncWebviews({ providers: enabledProviders, activeId, keepState: settings.keepStateOnSwitch, rect: readRect(el) });
-    };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [showSettings, activeId, enabledProviders, settings.keepStateOnSwitch]);
 ```
-并把 `<ContentArea ... />` 改为传 `ref={contentRef}`。
+（不需要 `contentRef`/`readRect`/resize 监听；`ContentArea` 维持 Task 9 的版本即可。）
 
-- [ ] **Step 4: 更新 App 测试 mock 并跑前端单测**
+- [ ] **Step 3: 更新 App 测试 mock**
 
-App 现在导入了 `./lib/webviews`，在 `src/App.test.tsx` 顶部（`import App` 之前）加入 mock，避免测试触达 Tauri：
+App 现在从 `./lib/commands` 导入。`src/App.test.tsx` 顶部（`import App` 之前）加 mock：
 ```tsx
-vi.mock("./lib/webviews", () => ({
-  syncWebviews: vi.fn().mockResolvedValue(undefined),
-  hideAllWebviews: vi.fn().mockResolvedValue(undefined),
-  destroyWebview: vi.fn().mockResolvedValue(undefined),
+vi.mock("./lib/commands", () => ({
+  syncAiWebviews: vi.fn().mockResolvedValue(undefined),
+  hideAiWebviews: vi.fn().mockResolvedValue(undefined),
 }));
 ```
+
+- [ ] **Step 4: 跑前端单测**
+
 Run: `pnpm test`
 Expected: 全绿。
 
@@ -2283,17 +2254,18 @@ Expected: 全绿。
 
 Run: `pnpm tauri dev`
 操作与预期：
-1. 启动后默认显示 ChatGPT（第一个 enabled），覆盖内容区，左侧栏可见。
-2. 点 Claude → 切到 Claude；再点回 ChatGPT → **保留之前状态**（keepState 默认开）。
-3. 打开设置 → AI webview 全部隐藏，露出设置页；切回某 AI → 恢复显示。
-4. 在「基础配置」关掉 Claude → 侧栏不再显示 Claude，其 webview 被销毁。
-5. 拖动改变窗口大小 → 当前 AI webview 跟随内容区重新定位。
+1. 启动后默认显示第一个 enabled（ChatGPT），覆盖内容区(x≥64)，左栏可见。
+2. 点 Claude → 切换；点回 ChatGPT → 保留之前状态（keepState 默认开）。
+3. 打开设置 → AI webview 全部隐藏，露出设置页；点某 AI → 恢复显示。
+4. 基础配置里关掉 Claude → 侧栏不再显示，其 webview 被销毁。
+5. 把"切出保留状态"关掉后切换 AI → 切走的 AI 被销毁，切回时重新加载。
+6. 改变窗口大小 → 当前 webview 自动跟随（auto_resize）。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add src/lib/webviews.ts src/components/ContentArea.tsx src/App.tsx src/App.test.tsx
-git commit -m "feat: AI 子 webview 承载层与主界面接线"
+git add src/lib/commands.ts src/App.tsx src/App.test.tsx
+git commit -m "feat: 主界面接线 AI webview 承载层"
 ```
 
 ---
@@ -2342,7 +2314,8 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn show_main(app: &AppHandle) {
-    if let Some(win) = app.get_webview_window("main") {
+    // 多 webview 模式下 main 是承载多个 webview 的 Window，用 get_window 做窗口级操作
+    if let Some(win) = app.get_window("main") {
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();
@@ -2804,4 +2777,4 @@ git commit -m "feat: 窗口尺寸配置与第一阶段端到端核对"
 - 新增/删除自定义 provider 的 UI。
 - 多语言实际翻译（i18n 结构已就绪，加 `en.ts` 等并让 language 生效）。
 - `Ctrl+Space` 与中文输入法冲突时的引导提示。
-- 多 webview unstable 特性的稳定性观察；若毛刺不可接受，启用方案 B（多窗口）替换 `lib/webviews.ts`。
+- 多 webview unstable 特性的稳定性观察；若毛刺不可接受，启用方案 B（多窗口）替换 `webviews.rs`。
