@@ -8,6 +8,12 @@ vi.mock("./state/settingsStore", () => ({
   saveSettings: () => Promise.resolve(),
 }));
 
+vi.mock("./lib/commands", () => ({
+  syncAiWebviews: vi.fn().mockResolvedValue(undefined),
+  hideAiWebviews: vi.fn().mockResolvedValue(undefined),
+  repositionAiWebviews: vi.fn().mockResolvedValue(undefined),
+}));
+
 import App from "./App";
 import { SettingsProvider } from "./state/SettingsContext";
 import { I18nProvider } from "./i18n";

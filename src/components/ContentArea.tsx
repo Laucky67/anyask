@@ -1,26 +1,33 @@
-import type { ReactNode } from "react";
+import { forwardRef, type ReactNode } from "react";
 
 interface Props {
-  /** 设置页打开时渲染设置内容；否则渲染 AI 占位（原生 webview 覆盖其上） */
   showSettings: boolean;
   settings: ReactNode;
   emptyHint?: string;
 }
 
-export function ContentArea({ showSettings, settings, emptyHint }: Props) {
+export const ContentArea = forwardRef<HTMLDivElement, Props>(function ContentArea(
+  { showSettings, settings, emptyHint },
+  ref
+) {
   return (
     <div style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden" }}>
       {showSettings ? (
         <div style={{ height: "100%", overflow: "auto" }}>{settings}</div>
       ) : (
         <div
+          ref={ref}
           data-content-area
           data-testid="content-area"
-          style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-muted)" }}
+          style={{ height: "100%" }}
         >
-          {emptyHint ?? ""}
+          {emptyHint ? (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-muted)" }}>
+              {emptyHint}
+            </div>
+          ) : null}
         </div>
       )}
     </div>
   );
-}
+});

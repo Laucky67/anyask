@@ -9,7 +9,7 @@ let storePromise: Promise<Store> | null = null;
 
 function getStore(): Promise<Store> {
   if (!storePromise) {
-    storePromise = load(STORE_FILE, { autoSave: true });
+    storePromise = load(STORE_FILE, { defaults: {}, autoSave: true });
   }
   return storePromise;
 }
