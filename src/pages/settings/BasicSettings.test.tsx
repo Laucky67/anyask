@@ -28,14 +28,14 @@ beforeEach(() => saveSettings.mockClear());
 describe("BasicSettings", () => {
   it("lists providers as toggle-able enable chips", async () => {
     setup();
-    await waitFor(() => expect(screen.getByText("ChatGPT")).toBeInTheDocument());
-    expect(screen.getByText("Claude")).toBeInTheDocument();
-    expect(screen.getByText("Google AI Studio")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /ChatGPT 启用状态/ })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Claude 启用状态/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Google AI Studio 启用状态/ })).toBeInTheDocument();
   });
 
   it("toggles a provider enabled and persists", async () => {
     setup();
-    await waitFor(() => screen.getByText("ChatGPT"));
+    await waitFor(() => screen.getByRole("button", { name: /ChatGPT 启用状态/ }));
     await act(async () => {
       (await screen.findByRole("button", { name: /ChatGPT 启用状态/ })).click();
     });

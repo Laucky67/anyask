@@ -85,6 +85,23 @@ export function BasicSettings() {
           <span style={{ color: "var(--fg-muted)", fontSize: 13 }}>{t("basic.keepState.desc")}</span>
         </div>
       </section>
+
+      <section>
+        <h3>快捷提问默认 AI</h3>
+        <select
+          value={settings.quickAskProviderId}
+          onChange={(e) => {
+            const id = e.target.value;
+            const url = settings.providers.find((p) => p.id === id)?.url ?? "";
+            updateSettings({ quickAskProviderId: id });
+            void import("../../lib/commands").then((m) => m.setQuickAskProvider(url));
+          }}
+        >
+          {settings.providers.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </section>
     </div>
   );
 }
