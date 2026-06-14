@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type { Settings } from "./types";
-import { DEFAULT_SETTINGS } from "./defaults";
-import { loadSettings, saveSettings } from "./settingsStore";
+import { DEFAULT_SETTINGS, mergeSettings } from "./defaults";
+import { loadSettings, saveSettings, SETTINGS_CHANGED_EVENT } from "./settingsStore";
 
 interface SettingsContextValue {
   settings: Settings;
@@ -29,6 +30,29 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     });
     return () => {
       alive = false;
+    };
+  }, []);
+
+  // 跨窗口同步：另一个窗口写设置后会广播，此处更新内存状态（不再写回，避免回环）。
+  // 修复「悬浮窗换 AI 后主窗口设置不同步 / 主窗口停用的 AI 仍出现在悬浮窗选择器」。
+  useEffect(() => {
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    listen<Partial<Settings>>(SETTINGS_CHANGED_EVENT, (e) => {
+      const merged = mergeSettings(e.payload ?? null);
+      settingsRef.current = merged;
+      setSettings(merged);
+    })
+      .then((un) => {
+        if (alive) unlisten = un;
+        else un();
+      })
+      .catch(() => {
+        /* 非 Tauri 环境（单元测试）忽略 */
+      });
+    return () => {
+      alive = false;
+      unlisten?.();
     };
   }, []);
 

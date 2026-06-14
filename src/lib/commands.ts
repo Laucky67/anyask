@@ -52,7 +52,27 @@ export async function toggleQuickAsk(): Promise<void> {
   await invoke("toggle_quick_ask");
 }
 
-/** 设置快捷提问窗加载的 provider（传 url） */
+/** 设置快捷提问窗加载的 provider（传 url）；失败会 reject */
 export async function setQuickAskProvider(url: string): Promise<void> {
   await invoke("set_quick_ask_provider", { url });
+}
+
+/** 显隐快捷提问窗的 AI 子 webview（打开 AI 选择面板时隐藏，关闭后恢复） */
+export async function setQuickAskAiVisible(visible: boolean): Promise<void> {
+  await invoke("set_quick_ask_ai_visible", { visible });
+}
+
+/** 隐藏快捷提问窗（顶栏隐藏按钮） */
+export async function hideQuickAsk(): Promise<void> {
+  await invoke("hide_quick_ask");
+}
+
+/** 设置快捷提问窗置顶（顶栏图钉按钮）；失败会 reject，供 UI 回滚 */
+export async function setQuickAskPinned(pinned: boolean): Promise<void> {
+  await invoke("set_quick_ask_pinned", { pinned });
+}
+
+/** 快捷提问窗新对话：导航回首页（已在首页则不操作） */
+export async function quickAskNewChat(): Promise<void> {
+  await invoke("quick_ask_new_chat");
 }

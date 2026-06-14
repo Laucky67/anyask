@@ -7,6 +7,7 @@ const saveSettings = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../state/settingsStore", () => ({
   loadSettings: () => Promise.resolve(DEFAULT_SETTINGS),
   saveSettings: (s: unknown) => saveSettings(s),
+  SETTINGS_CHANGED_EVENT: "settings:changed",
 }));
 const applyHotkeys = vi.fn().mockResolvedValue({ quickAsk: true, showMain: true });
 vi.mock("../../lib/commands", () => ({ applyHotkeys: () => applyHotkeys() }));

@@ -9,11 +9,22 @@ export function AiConfigSettings() {
   const { settings, updateSettings } = useSettings();
   const t = useT();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [blockedId, setBlockedId] = useState<string | null>(null);
 
   const patchProvider = (id: string, patch: Partial<AiProvider>) => {
     updateSettings({
       providers: settings.providers.map((p) => (p.id === id ? { ...p, ...patch } : p)),
     });
+  };
+
+  // 禁止停用快捷提问正在使用的 provider（保证默认 AI 恒为 enabled）
+  const setEnabled = (id: string, enabled: boolean) => {
+    if (!enabled && id === settings.quickAskProviderId) {
+      setBlockedId(id);
+      return;
+    }
+    setBlockedId(null);
+    patchProvider(id, { enabled });
   };
 
   return (
@@ -53,7 +64,10 @@ export function AiConfigSettings() {
                 </label>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <span style={{ fontSize: 13, color: "var(--fg-muted)" }}>{t("ai.enabled")}</span>
-                  <Toggle checked={p.enabled} label={`${p.name} ${t("ai.enabled")}`} onChange={(v) => patchProvider(p.id, { enabled: v })} />
+                  <Toggle checked={p.enabled} label={`${p.name} ${t("ai.enabled")}`} onChange={(v) => setEnabled(p.id, v)} />
+                  {blockedId === p.id && (
+                    <span style={{ color: "#e0a23a", fontSize: 12 }}>{t("settings.inUseByQuickAsk")}</span>
+                  )}
                 </div>
               </div>
             )}
