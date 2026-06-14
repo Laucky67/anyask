@@ -20,6 +20,26 @@ pub fn toggle_quick_ask(app: AppHandle) {
 }
 
 #[tauri::command]
-pub fn set_quick_ask_provider(app: AppHandle, url: String) {
-    quick_ask::set_url(&app, url);
+pub fn set_quick_ask_provider(app: AppHandle, url: String) -> Result<(), String> {
+    quick_ask::set_url(&app, url)
+}
+
+#[tauri::command]
+pub fn set_quick_ask_ai_visible(app: AppHandle, visible: bool) -> Result<(), String> {
+    quick_ask::set_ai_visible(&app, visible)
+}
+
+#[tauri::command]
+pub fn hide_quick_ask(app: AppHandle) -> Result<(), String> {
+    quick_ask::hide(&app)
+}
+
+#[tauri::command]
+pub fn set_quick_ask_pinned(app: AppHandle, pinned: bool) -> Result<(), String> {
+    quick_ask::set_pinned(&app, pinned)
+}
+
+#[tauri::command]
+pub fn quick_ask_new_chat(app: AppHandle) -> Result<(), String> {
+    quick_ask::new_chat(&app)
 }

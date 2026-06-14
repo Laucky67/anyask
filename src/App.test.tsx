@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS } from "./state/defaults";
 vi.mock("./state/settingsStore", () => ({
   loadSettings: () => Promise.resolve(DEFAULT_SETTINGS),
   saveSettings: () => Promise.resolve(),
+  SETTINGS_CHANGED_EVENT: "settings:changed",
 }));
 
 vi.mock("./lib/commands", () => ({

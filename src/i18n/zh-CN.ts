@@ -23,4 +23,9 @@ export const zhCN: Record<string, string> = {
   "hotkeys.conflict": "与其它快捷键冲突",
   "hotkeys.failed": "注册失败（可能与系统或输入法冲突）",
   "common.empty": "暂无可用 AI，请在设置中启用",
+  "settings.inUseByQuickAsk": "快捷提问正在使用，无法停用",
+  "quickAsk.hide": "隐藏",
+  "quickAsk.pin": "置顶",
+  "quickAsk.newChat": "新对话",
+  "quickAsk.selectAi": "选择 AI",
 };

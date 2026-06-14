@@ -34,6 +34,10 @@ pub fn run() {
             commands::show_main_window,
             commands::toggle_quick_ask,
             commands::set_quick_ask_provider,
+            commands::set_quick_ask_ai_visible,
+            commands::hide_quick_ask,
+            commands::set_quick_ask_pinned,
+            commands::quick_ask_new_chat,
             webviews::sync_ai_webviews,
             webviews::hide_ai_webviews,
             webviews::reposition_ai_webviews
