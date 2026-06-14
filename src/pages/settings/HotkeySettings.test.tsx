@@ -36,8 +36,8 @@ describe("HotkeySettings", () => {
   it("shows current hotkeys formatted", async () => {
     setup();
     await waitFor(() => expect(screen.getByText("快捷提问")).toBeInTheDocument());
-    expect(screen.getByText("Ctrl + Space")).toBeInTheDocument();
-    expect(screen.getByText("Ctrl + Shift + Space")).toBeInTheDocument();
+    expect(screen.getByText("Shift + Z")).toBeInTheDocument();
+    expect(screen.getByText("Ctrl + Alt + Space")).toBeInTheDocument();
   });
 
   it("captures a new hotkey on click + keydown", async () => {

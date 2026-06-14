@@ -12,9 +12,9 @@ describe("DEFAULT_SETTINGS", () => {
     expect(DEFAULT_SETTINGS.theme).toBe("system");
   });
 
-  it("default hotkeys use CommandOrControl", () => {
-    expect(DEFAULT_SETTINGS.hotkeys.quickAsk).toBe("CommandOrControl+Space");
-    expect(DEFAULT_SETTINGS.hotkeys.showMain).toBe("CommandOrControl+Shift+Space");
+  it("default hotkeys", () => {
+    expect(DEFAULT_SETTINGS.hotkeys.quickAsk).toBe("Shift+Z");
+    expect(DEFAULT_SETTINGS.hotkeys.showMain).toBe("CommandOrControl+Alt+Space");
   });
 });
 
