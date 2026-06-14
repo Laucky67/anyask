@@ -73,6 +73,17 @@ interface ValidationErrors {
   url?: string;    // "URL不能为空" | "URL格式不正确"
   logo?: string;   // "文件大小超过5MB" | "不支持的图片格式"
 }
+
+// Logo 操作类型（用于前后端通信）
+type LogoAction =
+  | { type: "keep" }                          // 保持现有 Logo
+  | { type: "upload"; dataUrl: string }       // 上传新图片（base64）
+  | { type: "generate"; name: string }        // 生成字母 Logo（由后端哈希颜色）
+
+// Rust 命令返回的 Logo 结果
+type LogoResult = 
+  | { type: "letter"; color: string }
+  | { type: "image"; assetUrl: string }       // Tauri asset protocol URL
 ```
 
 ### 3.2 前端校验规则
@@ -93,13 +104,18 @@ interface ValidationErrors {
 - 文件大小：≤ 5MB
 - 前端使用 Canvas 生成 128x128 缩略图预览并转为 base64
 
-### 3.3 后端校验（Rust）
+### 3.3 后端校验与存储策略
 
-后端命令执行以下校验和处理：
+**校验逻辑：**
 1. 重复前端的所有校验（防御性编程）
 2. **不进行 URL 可达性校验**（避免人机验证、地区限制、登录墙、超时等问题）
 3. 如果 Logo 是上传的图片（base64），生成 128x128 缩略图并保存到应用数据目录
-4. 保存到 settings.json 并触发 `SETTINGS_CHANGED_EVENT` 跨窗口同步
+
+**存储策略（重要）：**
+- **前端负责完整 settings 写入**：后端命令返回修改后的 Provider 数据，前端通过 `updateSettings()` 写入 store
+- **不由后端直接写 settings.json**：避免 Rust 侧需要维护完整 Settings 结构（theme、hotkeys、quickAskProviderId 等）
+- **后端只处理 Provider 相关逻辑**：校验、Logo 文件处理、返回结果
+- **前端负责触发同步**：调用 `updateSettings()` 会自动通过 `saveSettings()` 触发 `SETTINGS_CHANGED_EVENT`
 
 ## 4. UI 交互设计
 
@@ -201,11 +217,20 @@ const isOnlyEnabled = draft.enabled && !canDisable;
   const enabledProviders = settings.providers.filter(p => p.enabled);
   const current = enabledProviders.find(p => p.id === settings.quickAskProviderId) 
     ?? enabledProviders[0];
+  
+  // 如果默认 Provider 已不可用，持久化新的默认值
+  if (current && current.id !== settings.quickAskProviderId) {
+    updateSettings({ quickAskProviderId: current.id });
+  }
   ```
 - 自动调用 `setQuickAskProvider(current.url)` 导航
 
 **主窗口：**
-- 调用 `syncAiWebviews` 自动处理启用状态变更
+- URL 变更或启用状态变更时，调用 `syncAiWebviews` 会：
+  1. 关闭已删除/禁用的 Provider 的 webview
+  2. 为新增/重新启用的 Provider 创建 webview
+  3. 对 URL 变更的 Provider，先销毁旧 webview 再创建新的（确保加载新 URL）
+- 名称/Logo 变更不影响 webview
 
 ### 4.7 响应式布局
 
@@ -300,20 +325,20 @@ async fn add_provider(
     name: String,
     url: String,
     enabled: bool,
-    logo: ProviderLogo,
+    logo_action: LogoAction,
     state: State<'_, AppState>
-) -> Result<String, String>
+) -> Result<(String, LogoResult), String>
 ```
 
 **功能：**
 - 生成 UUID 并取前 8 位作为 id
 - 校验 name（必填、长度 ≤ 20、去除首尾空格）
 - 校验 url（必填、格式合法、http/https 协议）
-- 如果 logo 是 letter 类型，根据 name 哈希生成固定颜色
-- 如果 logo 是 image 类型（base64），生成 128x128 缩略图并保存到 `{app_data_dir}/provider-logos/{id}.png`
-- 添加到 settings.providers
-- 保存 settings 并触发 `SETTINGS_CHANGED_EVENT`
-- 返回新生成的 id
+- 根据 `logo_action` 处理 Logo：
+  - `keep`: 不应出现在新增场景，返回错误
+  - `upload`: 解码 base64，生成 128x128 缩略图，保存到 `{app_data_dir}/provider-logos/{id}.png`，返回 Tauri asset protocol URL（`asset://localhost/provider-logos/{id}.png`）
+  - `generate`: 根据 name 哈希生成固定颜色，返回 `{ type: "letter", color }`
+- 返回 `(id, LogoResult)`，前端用于更新 settings
 
 #### `validate_and_save_provider`
 ```rust
@@ -323,46 +348,59 @@ async fn validate_and_save_provider(
     name: String,
     url: String,
     enabled: bool,
-    logo: ProviderLogo,
+    logo_action: LogoAction,
     state: State<'_, AppState>
-) -> Result<(), String>
+) -> Result<LogoResult, String>
 ```
 
 **功能：**
 - 校验 name（必填、长度 ≤ 20）
 - 校验 url（必填、格式合法、http/https）
-- 校验 enabled：如果设为 false，检查是否还有其他启用的 Provider，如果没有则返回错误
-- 如果 logo 是 image 类型且是新上传的 base64，生成缩略图保存
-- 更新 settings.json 中对应的 Provider
-- 触发 `SETTINGS_CHANGED_EVENT` 跨窗口同步
+- 校验 enabled：如果设为 false，需检查是否还有其他启用的 Provider（需要前端传入当前完整 providers 列表，或查询 settings.json）
+- 根据 `logo_action` 处理 Logo：
+  - `keep`: 不处理，返回现有 Logo（前端从 settings 读取）
+  - `upload`: 解码 base64，生成缩略图保存，删除旧 Logo 文件（如果存在），返回新 asset URL
+  - `generate`: 根据 name 哈希生成颜色，删除旧 Logo 文件（如果存在），返回 letter logo
+- 返回 `LogoResult`，前端用于更新 settings
+
+**注意：** 如果禁用当前快捷提问使用的 Provider，前端需要同时更新 `quickAskProviderId` 为第一个启用的
 
 #### `delete_provider`
 ```rust
 #[tauri::command]
 async fn delete_provider(
     id: String,
+    logo_file: Option<String>,  // 如果是 image 类型，传入文件名用于删除
     state: State<'_, AppState>
 ) -> Result<(), String>
 ```
 
 **功能：**
-- 检查是否是唯一启用的 Provider，如果是则返回错误
-- 从 settings.providers 中移除指定 id 的 Provider
-- 如果该 Provider 有上传的 logo 文件，删除对应的缩略图文件
-- 如果被快捷提问使用，更新 `quickAskProviderId` 为第一个启用的 Provider
-- 保存 settings 并触发同步事件
+- 前端已在调用前检查是否是唯一启用的（UI 层禁用删除按钮）
+- 如果传入 `logo_file`，删除对应的缩略图文件
+- 返回成功，前端负责：
+  1. 从 settings.providers 中移除该 Provider
+  2. 如果被快捷提问使用，更新 `quickAskProviderId` 为第一个启用的
+  3. 调用 `updateSettings()` 触发持久化和同步
 
 #### `refresh_active_ai_webview`
 ```rust
 #[tauri::command]
 async fn refresh_active_ai_webview(
+    provider_id: String,
     state: State<'_, AppState>
 ) -> Result<(), String>
 ```
 
 **功能：**
-- 找到主窗口当前激活的 AI webview
-- 调用 webview 的导航方法重新加载其配置的 URL
+- 前端传入当前激活的 Provider ID
+- 从 `AppState` 中找到对应的 webview
+- 调用 webview 的导航方法重新加载其配置的 URL（从 settings 读取）
+- 如果 webview 不存在，返回错误
+
+**使用场景：**
+- Sidebar 刷新按钮：前端传入主窗口当前选中的 Provider ID
+- 不用于 Provider URL 变更场景（URL 变更通过 `syncAiWebviews` 重建 webview）
 
 ### 6.2 工具函数
 
@@ -391,7 +429,9 @@ fn hash_color_from_name(name: &str) -> String {
 1. 解码 base64 图片数据
 2. 等比缩放到 128x128（保持宽高比，不足部分透明填充）
 3. 保存到 `{app_data_dir}/provider-logos/{id}.png`
-4. 返回文件路径作为 `ProviderLogo { type: "image", src: "..." }`
+4. 返回 Tauri asset protocol URL：`asset://localhost/provider-logos/{id}.png`
+   - 前端可直接在 `<img src="...">` 中使用此 URL
+   - Tauri 会自动将 asset:// 协议映射到应用数据目录
 
 ## 7. 跨窗口同步
 
@@ -410,11 +450,13 @@ fn hash_color_from_name(name: &str) -> String {
 
 **主窗口的 Provider 变更：**
 - URL 变更或启用状态变更：调用 `syncAiWebviews` 重新创建/导航 webview
+  - 对 URL 变更的 Provider：先销毁旧 webview，再创建加载新 URL 的 webview
+  - 刷新按钮（`refresh_active_ai_webview`）用于手动刷新当前页面，不改变 URL
 - 名称/Logo 变更：不影响 webview，只影响 UI 显示
 
 **快捷提问窗口的 webview：**
-- Provider 删除或禁用：如果是当前使用的，自动切换到第一个启用的
-- URL 变更：调用 `setQuickAskProvider` 导航到新 URL
+- Provider 删除或禁用：如果是当前使用的，前端自动切换到第一个启用的并调用 `setQuickAskProvider`
+- URL 变更：前端检测到 URL 变化后，调用 `setQuickAskProvider(newUrl)` 导航
 
 ## 8. 额外功能：Sidebar 刷新按钮
 
@@ -500,6 +542,10 @@ fn hash_color_from_name(name: &str) -> String {
   - [ ] 增删改查完整流程
   - [ ] 跨窗口同步验证
   - [ ] 启用状态限制验证
+- [ ] 更新现有测试
+  - [ ] `AiConfigSettings.test.tsx`：更新为草稿模式 + 保存按钮逻辑
+  - [ ] `BasicSettings.test.tsx`：更新启用限制逻辑（"至少一个启用" 替代 "快捷提问使用中"）
+  - [ ] `QuickAskBar.test.tsx`：添加自动切换 Provider 测试
 
 ## 10. 边界情况与错误处理
 
@@ -540,7 +586,52 @@ const ERROR_MESSAGES = {
 4. **缩略图生成：** 只在保存时执行，避免编辑时阻塞
 5. **文件校验：** 前端优先拦截，减少后端负担
 
-## 12. 未来扩展
+## 13. 架构决策记录（ADR）
+
+### ADR-1: 前端负责完整 settings 写入
+
+**问题：** Provider 修改需要持久化到 settings.json，由前端还是后端负责？
+
+**决策：** 前端通过 `updateSettings()` 写入完整 settings，后端只处理 Provider 相关逻辑并返回结果。
+
+**理由：**
+1. 避免 Rust 侧维护完整 Settings 结构（theme、hotkeys、language 等）
+2. 前端已有成熟的 settings store 机制和跨窗口同步
+3. 后端专注于 Provider 校验、Logo 文件处理等核心逻辑
+4. 降低前后端耦合度
+
+### ADR-2: Logo 使用显式操作类型
+
+**问题：** Logo 数据既有已保存的文件路径，也有新上传的 base64，后端如何区分？
+
+**决策：** 定义 `LogoAction` 类型（keep/upload/generate），前端显式告知后端意图。
+
+**理由：**
+1. 避免后端通过启发式方法判断（路径 vs base64 容易出错）
+2. 语义清晰，易于测试和维护
+3. 支持未来扩展（如 remove、从 URL 下载等）
+
+### ADR-3: Tauri asset protocol 用于 Logo 访问
+
+**问题：** 后端保存的 Logo 文件路径如何在前端渲染？
+
+**决策：** 后端返回 `asset://localhost/provider-logos/{id}.png` 格式的 URL。
+
+**理由：**
+1. Tauri 会自动将 asset:// 协议映射到应用数据目录
+2. 前端可直接在 `<img src="...">` 中使用，无需特殊处理
+3. 跨平台一致性（Windows/macOS/Linux）
+
+### ADR-4: 刷新按钮由前端传入 Provider ID
+
+**问题：** `refresh_active_ai_webview` 命令如何知道要刷新哪个 webview？
+
+**决策：** 前端传入当前激活的 Provider ID。
+
+**理由：**
+1. 避免 Rust 侧维护 "当前激活" 状态（与前端状态重复）
+2. 前端已知当前选中的 Provider，传参更简单
+3. 降低状态同步复杂度
 
 1. **拖拽排序：** Provider 列表支持拖拽调整顺序
 2. **批量操作：** 批量启用/禁用多个 Provider
