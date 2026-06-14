@@ -198,8 +198,33 @@ type LogoResult =
    - 显示提示："至少需要保留一个启用的AI"
 
 2. **基本设置页（BasicSettings）：**
-   - 当前显示启用的 AI 列表
-   - 同样的校验逻辑
+   - "启用 AI" 区域：点击 Provider Logo 即时切换启用状态（**保持实时切换**，不走保存按钮模式，类似主题切换）
+   - 旧逻辑"快捷提问使用中不可停用"改为"至少保留一个启用"
+   - 如果尝试禁用唯一启用的 Provider，拦截并显示提示"至少需要保留一个启用的AI"
+   - 如果禁用的是快捷提问正在使用的 Provider，同时更新 `quickAskProviderId` 为第一个启用的
+
+**BasicSettings 具体改动：**
+```typescript
+const setProviderEnabled = (id: string, enabled: boolean) => {
+  const enabledCount = settings.providers.filter(p => p.enabled).length;
+  // 至少保留一个启用
+  if (!enabled && enabledCount <= 1) {
+    setHint(true);
+    return;
+  }
+  setHint(false);
+  const nextProviders = settings.providers.map(p => 
+    p.id === id ? { ...p, enabled } : p
+  );
+  // 如果禁用的是快捷提问当前 Provider，切换到第一个启用的
+  let patch: Partial<Settings> = { providers: nextProviders };
+  if (!enabled && id === settings.quickAskProviderId) {
+    const firstEnabled = nextProviders.find(p => p.enabled);
+    if (firstEnabled) patch.quickAskProviderId = firstEnabled.id;
+  }
+  updateSettings(patch);
+};
+```
 
 **实现逻辑：**
 ```typescript
@@ -501,6 +526,10 @@ fn hash_color_from_name(name: &str) -> String {
   - [ ] 计算 `canDisable` 逻辑
   - [ ] 禁用 Toggle 并显示提示
   - [ ] 删除按钮禁用状态
+- [ ] BasicSettings 启用逻辑改造
+  - [ ] "快捷提问使用中不可停用" 改为 "至少保留一个启用"
+  - [ ] 禁用快捷提问当前 Provider 时自动切换默认值
+  - [ ] 更新提示文案
 - [ ] 前端命令绑定（`src/lib/commands.ts`）
   - [ ] `add_provider`
   - [ ] `validate_and_save_provider`
@@ -513,6 +542,9 @@ fn hash_color_from_name(name: &str) -> String {
   - [ ] 添加刷新按钮（`RotateCw` 图标）
   - [ ] 更新设置图标（`Settings` 图标）
 - [ ] 更新国际化文案（`src/i18n/zh-CN.ts`）
+  - [ ] 新增：`settings.atLeastOneEnabled` = "至少需要保留一个启用的AI"
+  - [ ] 旧的 `settings.inUseByQuickAsk` 在两处（AiConfigSettings、BasicSettings）替换为新文案
+  - [ ] 新增 Logo、保存、取消、删除等相关文案
 
 ### 9.2 后端（Rust/Tauri）
 
