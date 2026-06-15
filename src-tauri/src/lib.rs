@@ -30,8 +30,13 @@ pub fn run() {
                 return;
             }
 
-            if window.label() == "quick-ask" && matches!(event, WindowEvent::Focused(true)) {
-                quick_ask::cancel_pending_reset(window.app_handle());
+            if window.label() == "quick-ask" {
+                if let WindowEvent::Focused(focused) = event {
+                    quick_ask::set_focused(window.app_handle(), *focused);
+                    if *focused {
+                        quick_ask::cancel_pending_reset(window.app_handle());
+                    }
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![

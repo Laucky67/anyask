@@ -38,9 +38,13 @@ enum VisibleToggleAction {
     Raise,
 }
 
-fn visible_toggle_action(focused: Result<bool, ()>) -> VisibleToggleAction {
-    match focused {
+fn visible_toggle_action(
+    native_focused: Result<bool, ()>,
+    tracked_focused: bool,
+) -> VisibleToggleAction {
+    match native_focused {
         Ok(true) => VisibleToggleAction::Hide,
+        Ok(false) | Err(()) if tracked_focused => VisibleToggleAction::Hide,
         Ok(false) | Err(()) => VisibleToggleAction::Raise,
     }
 }
@@ -64,6 +68,19 @@ fn raise(win: &tauri::Window, pinned: bool) {
     }
 }
 
+pub fn set_focused(app: &AppHandle, focused: bool) {
+    app.state::<AppState>()
+        .quick_ask_focused
+        .store(focused, Ordering::SeqCst);
+    println!("[quick-ask] focus changed: focused={focused}");
+}
+
+fn tracked_focused(app: &AppHandle) -> bool {
+    app.state::<AppState>()
+        .quick_ask_focused
+        .load(Ordering::SeqCst)
+}
+
 fn next_reset_generation(app: &AppHandle) -> u64 {
     app.state::<AppState>()
         .quick_ask_reset_generation
@@ -79,37 +96,53 @@ fn is_reset_generation_current(app: &AppHandle, generation: u64) -> bool {
 }
 
 pub fn cancel_pending_reset(app: &AppHandle) {
-    let _ = next_reset_generation(app);
+    let generation = next_reset_generation(app);
+    println!("[quick-ask] reset cancelled: generation={generation}");
 }
 
 fn schedule_reset_after_hide(app: &AppHandle, policy: QuickAskResetPolicy) {
     let generation = next_reset_generation(app);
     match reset_delay(policy) {
         ResetDelay::Immediate => {
+            println!("[quick-ask] reset immediate: policy={policy:?}, generation={generation}");
             let _ = dispose_quick_ask_window(app, generation);
         }
         ResetDelay::After(duration) => {
+            println!(
+                "[quick-ask] reset scheduled: policy={policy:?}, generation={generation}, delay_secs={}",
+                duration.as_secs()
+            );
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(duration).await;
+                println!("[quick-ask] reset timer fired: generation={generation}");
                 let _ = dispose_if_still_hidden(&app, generation);
             });
         }
-        ResetDelay::Never => {}
+        ResetDelay::Never => {
+            println!("[quick-ask] reset skipped: policy={policy:?}, generation={generation}");
+        }
     }
 }
 
 fn dispose_if_still_hidden(app: &AppHandle, generation: u64) -> Result<(), String> {
     if !is_reset_generation_current(app, generation) {
+        println!("[quick-ask] reset stale: generation={generation}");
         return Ok(());
     }
 
     let Some(win) = app.get_window(LABEL) else {
+        println!("[quick-ask] reset skipped: generation={generation}, reason=window_missing");
         return Ok(());
     };
 
     let visible = win.is_visible().unwrap_or(true);
-    let focused = win.is_focused().unwrap_or(true);
+    let native_focused = win.is_focused().unwrap_or(true);
+    let tracked_focused = tracked_focused(app);
+    let focused = native_focused || tracked_focused;
+    println!(
+        "[quick-ask] reset check: generation={generation}, visible={visible}, native_focused={native_focused}, tracked_focused={tracked_focused}, focused={focused}"
+    );
     if !visible && !focused {
         dispose_quick_ask_window(app, generation)?;
     }
@@ -119,9 +152,11 @@ fn dispose_if_still_hidden(app: &AppHandle, generation: u64) -> Result<(), Strin
 
 fn dispose_quick_ask_window(app: &AppHandle, generation: u64) -> Result<(), String> {
     if !is_reset_generation_current(app, generation) {
+        println!("[quick-ask] dispose skipped: generation={generation}, reason=stale");
         return Ok(());
     }
 
+    println!("[quick-ask] dispose requested: generation={generation}");
     if let Some(win) = app.get_window(LABEL) {
         win.close().map_err(|e| e.to_string())?;
     }
@@ -130,14 +165,19 @@ fn dispose_quick_ask_window(app: &AppHandle, generation: u64) -> Result<(), Stri
         wv.close().map_err(|e| e.to_string())?;
     }
 
+    set_focused(app, false);
     cancel_pending_reset(app);
+    println!("[quick-ask] dispose completed: generation={generation}");
     Ok(())
 }
 
 fn hide_with_reset_policy(app: &AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_window(LABEL) {
+        let policy = read_settings(app).quick_ask_reset_policy;
+        println!("[quick-ask] hide requested: policy={policy:?}");
         win.hide().map_err(|e| e.to_string())?;
-        schedule_reset_after_hide(app, read_settings(app).quick_ask_reset_policy);
+        set_focused(app, false);
+        schedule_reset_after_hide(app, policy);
     }
     Ok(())
 }
@@ -150,21 +190,31 @@ pub fn toggle(app: &AppHandle) {
     // get_webview_window 仅对单 webview 窗口返回 Some，此处会得到 None。
     if let Some(win) = app.get_window(LABEL) {
         match win.is_visible() {
-            Ok(true) => match visible_toggle_action(win.is_focused().map_err(|_| ())) {
-                VisibleToggleAction::Hide => {
-                    let _ = hide_with_reset_policy(app);
-                }
-                VisibleToggleAction::Raise => {
-                    cancel_pending_reset(app);
-                    raise(&win, pinned);
-                    if let Some(wv) = app.get_webview(AI_LABEL) {
-                        let _ = wv.show();
+            Ok(true) => {
+                let native_focused = win.is_focused().map_err(|_| ());
+                let tracked_focused = tracked_focused(app);
+                let action = visible_toggle_action(native_focused, tracked_focused);
+                println!(
+                    "[quick-ask] toggle visible: native_focused={native_focused:?}, tracked_focused={tracked_focused}, action={action:?}"
+                );
+                match action {
+                    VisibleToggleAction::Hide => {
+                        let _ = hide_with_reset_policy(app);
+                    }
+                    VisibleToggleAction::Raise => {
+                        cancel_pending_reset(app);
+                        raise(&win, pinned);
+                        set_focused(app, true);
+                        if let Some(wv) = app.get_webview(AI_LABEL) {
+                            let _ = wv.show();
+                        }
                     }
                 }
-            },
+            }
             _ => {
                 cancel_pending_reset(app);
                 raise(&win, pinned);
+                set_focused(app, true);
                 // 兜底：无论 React 面板此前是否处于「隐藏 AI」状态，呼出即强制显示 AI，
                 // 避免「面板开着时被隐藏 → 再呼出」卡在 AI 不可见。
                 if let Some(wv) = app.get_webview(AI_LABEL) {
@@ -177,7 +227,9 @@ pub fn toggle(app: &AppHandle) {
 
     // 首次创建：根 webview = 本地壳（渲染顶栏），AI 站点作为子 webview 叠在顶栏下方
     let url = target_url(app);
-    let Ok(parsed) = url.parse::<Url>() else { return };
+    let Ok(parsed) = url.parse::<Url>() else {
+        return;
+    };
     let built = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
         .title("快捷提问")
         .inner_size(WIDTH, HEIGHT)
@@ -191,7 +243,9 @@ pub fn toggle(app: &AppHandle) {
     }
 
     // 取底层 Window 以挂子 webview（固定尺寸窗口，不用 auto_resize，避免覆盖顶栏）
-    let Some(window) = app.get_window(LABEL) else { return };
+    let Some(window) = app.get_window(LABEL) else {
+        return;
+    };
     let child = WebviewBuilder::new(AI_LABEL, WebviewUrl::External(parsed)).focused(true);
     let _ = window.add_child(
         child,
@@ -202,6 +256,7 @@ pub fn toggle(app: &AppHandle) {
     cancel_pending_reset(app);
     center_bottom(&window);
     raise(&window, pinned);
+    set_focused(app, true);
 }
 
 /// 设置 url：若 AI 子 webview 已存在则**先导航成功**，再写内存 override（供下次创建用）。
@@ -292,10 +347,22 @@ mod tests {
     fn reset_delay_maps_each_policy() {
         let cases = [
             (QuickAskResetPolicy::Reopen, ResetDelay::Immediate),
-            (QuickAskResetPolicy::After5m, ResetDelay::After(Duration::from_secs(5 * 60))),
-            (QuickAskResetPolicy::After10m, ResetDelay::After(Duration::from_secs(10 * 60))),
-            (QuickAskResetPolicy::After20m, ResetDelay::After(Duration::from_secs(20 * 60))),
-            (QuickAskResetPolicy::After30m, ResetDelay::After(Duration::from_secs(30 * 60))),
+            (
+                QuickAskResetPolicy::After5m,
+                ResetDelay::After(Duration::from_secs(5 * 60)),
+            ),
+            (
+                QuickAskResetPolicy::After10m,
+                ResetDelay::After(Duration::from_secs(10 * 60)),
+            ),
+            (
+                QuickAskResetPolicy::After20m,
+                ResetDelay::After(Duration::from_secs(20 * 60)),
+            ),
+            (
+                QuickAskResetPolicy::After30m,
+                ResetDelay::After(Duration::from_secs(30 * 60)),
+            ),
             (QuickAskResetPolicy::Never, ResetDelay::Never),
         ];
 
@@ -306,16 +373,41 @@ mod tests {
 
     #[test]
     fn visible_focused_window_hides_on_hotkey() {
-        assert_eq!(visible_toggle_action(Ok(true)), VisibleToggleAction::Hide);
+        assert_eq!(
+            visible_toggle_action(Ok(true), false),
+            VisibleToggleAction::Hide
+        );
     }
 
     #[test]
     fn visible_unfocused_window_raises_on_hotkey() {
-        assert_eq!(visible_toggle_action(Ok(false)), VisibleToggleAction::Raise);
+        assert_eq!(
+            visible_toggle_action(Ok(false), false),
+            VisibleToggleAction::Raise
+        );
+    }
+
+    #[test]
+    fn visible_tracked_focused_window_hides_when_native_focus_is_false() {
+        assert_eq!(
+            visible_toggle_action(Ok(false), true),
+            VisibleToggleAction::Hide
+        );
     }
 
     #[test]
     fn focus_lookup_failure_raises_instead_of_hiding() {
-        assert_eq!(visible_toggle_action(Err(())), VisibleToggleAction::Raise);
+        assert_eq!(
+            visible_toggle_action(Err(()), false),
+            VisibleToggleAction::Raise
+        );
+    }
+
+    #[test]
+    fn focus_lookup_failure_hides_when_tracked_focused() {
+        assert_eq!(
+            visible_toggle_action(Err(()), true),
+            VisibleToggleAction::Hide
+        );
     }
 }
