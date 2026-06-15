@@ -61,6 +61,21 @@ pub async fn sync_ai_webviews(
     let state = app.state::<AppState>();
     let _guard = state.webview_sync.lock().await;
 
+    // url 变更：关闭旧 webview，后续 ensure 会按新 url 重建（短临界区，期间不 await）
+    {
+        let mut urls = state.ai_webview_urls.lock().unwrap();
+        for p in &providers {
+            if urls.get(&p.id).map(|u| u != &p.url).unwrap_or(false) {
+                if let Some(wv) = app.get_webview(&label(&p.id)) {
+                    let _ = wv.close();
+                }
+            }
+            urls.insert(p.id.clone(), p.url.clone());
+        }
+        let ids: std::collections::HashSet<&String> = providers.iter().map(|p| &p.id).collect();
+        urls.retain(|id, _| ids.contains(id));
+    }
+
     let enabled_labels: std::collections::HashSet<String> =
         providers.iter().map(|p| label(&p.id)).collect();
 
@@ -121,4 +136,22 @@ pub async fn reposition_ai_webviews(app: AppHandle, bounds: Bounds) -> Result<()
         }
     }
     Ok(())
+}
+
+/// 刷新指定 provider 的主窗口 AI webview：重新导航到 settings 中配置的 url。
+/// 供 Sidebar 刷新按钮使用，传入当前激活的 provider id。
+#[tauri::command]
+pub async fn refresh_active_ai_webview(app: AppHandle, provider_id: String) -> Result<(), String> {
+    let wv = app
+        .get_webview(&label(&provider_id))
+        .ok_or("webview not found")?;
+    let settings = crate::settings_io::read_settings(&app);
+    let url = settings
+        .providers
+        .iter()
+        .find(|p| p.id == provider_id)
+        .map(|p| p.url.clone())
+        .ok_or("provider not found")?;
+    let parsed: tauri::Url = url.parse().map_err(|_| "invalid url".to_string())?;
+    wv.navigate(parsed).map_err(|e| e.to_string())
 }

@@ -54,7 +54,8 @@ pub fn run() {
             commands::delete_provider,
             webviews::sync_ai_webviews,
             webviews::hide_ai_webviews,
-            webviews::reposition_ai_webviews
+            webviews::reposition_ai_webviews,
+            webviews::refresh_active_ai_webview
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

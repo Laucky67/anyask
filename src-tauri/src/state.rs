@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64},
     Mutex,
@@ -18,4 +19,6 @@ pub struct AppState {
     /// 串行化 AI webview 同步，避免并发 sync_ai_webviews 在 ensure() 里
     /// 「检查存在 → 创建」之间竞态导致重复 add_child（"already exists"）。
     pub webview_sync: tauri::async_runtime::Mutex<()>,
+    /// 记录每个 AI webview 创建时所用的 url，用于检测 url 变更后重建 webview
+    pub ai_webview_urls: Mutex<HashMap<String, String>>,
 }
