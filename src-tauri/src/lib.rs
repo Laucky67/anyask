@@ -1,5 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod commands;
+mod provider_utils;
 mod quick_ask;
 mod settings_io;
 mod shortcuts;
