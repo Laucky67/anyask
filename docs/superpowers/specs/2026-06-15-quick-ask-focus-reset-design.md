@@ -120,7 +120,8 @@ Rust `settings_io.rs` 读取同名字段，旧设置缺字段时也使用 `after
 该函数必须确保：
 
 - `quick-ask` 父窗口被真正关闭，而不是只隐藏。
-- `quick-ask-ai` 子 WebView 一并释放。`quick-ask-ai` 是通过 `quick-ask` 父窗口的 `add_child()` 创建的子 WebView，关闭父窗口后应随父窗口释放；实现时需要验证 `app.get_webview("quick-ask-ai")` 不会继续返回可用的旧 WebView。如果本地 Tauri 行为没有随父窗口释放子 WebView，则必须在关闭父窗口前显式关闭 `quick-ask-ai`。
+- `quick-ask-ai` 子 WebView 一并释放。`quick-ask-ai` 是通过 `quick-ask` 父窗口的 `add_child()` 创建的子 WebView，关闭父窗口后应随父窗口释放；实现时需要验证 `app.get_webview("quick-ask-ai")` 不会继续返回可用的旧 WebView。如果本地 Tauri 行为没有随父窗口释放子 WebView，则必须在父窗口关闭成功后显式关闭残留的 `quick-ask-ai`。
+- 注销顺序必须避免局部销毁：先关闭 `quick-ask` 父窗口；如果父窗口关闭失败，不关闭 `quick-ask-ai`，让隐藏的父窗口和子 WebView 保持一致，后续呼出仍可复用或再次尝试注销。只有父窗口关闭成功后，才检查并补关残留的 `quick-ask-ai`。
 - 注销成功后，不保留任何窗口或 WebView 句柄。当前 `AppState` 不缓存窗口句柄；如果实现过程中新增了运行时句柄或状态引用，必须在注销成功后清理，避免下次呼出复用已失效句柄。
 - `quick_ask_reset_generation` 继续用于让旧定时任务失效。注销成功后再次递增 generation，防止已经排队的旧任务对新窗口生效。
 
@@ -141,6 +142,8 @@ pub quick_ask_reset_generation: AtomicU64
 ```
 
 该字段用于让旧定时任务失效。它不需要持久化，也不代表窗口是否显示，只是生命周期任务版本号。
+
+`AppState` 当前使用 `#[derive(Default)]` 初始化；`AtomicU64::default()` 为 0，因此新增字段不需要手写 `Default` 实现。若后续移除 derive，则必须显式初始化为 `AtomicU64::new(0)`。
 
 ## 错误处理
 
