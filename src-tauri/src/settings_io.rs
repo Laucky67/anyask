@@ -9,6 +9,7 @@ const DEFAULT_QUICK_ASK_PROVIDER: &str = "chatgpt";
 fn default_quick_ask() -> String { DEFAULT_QUICK_ASK.into() }
 fn default_show_main() -> String { DEFAULT_SHOW_MAIN.into() }
 fn default_quick_ask_provider() -> String { DEFAULT_QUICK_ASK_PROVIDER.into() }
+fn default_quick_ask_reset_policy() -> QuickAskResetPolicy { QuickAskResetPolicy::After5m }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Hotkeys {
@@ -24,6 +25,28 @@ impl Default for Hotkeys {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum QuickAskResetPolicy {
+    #[serde(rename = "reopen")]
+    Reopen,
+    #[serde(rename = "after5m")]
+    After5m,
+    #[serde(rename = "after10m")]
+    After10m,
+    #[serde(rename = "after20m")]
+    After20m,
+    #[serde(rename = "after30m")]
+    After30m,
+    #[serde(rename = "never")]
+    Never,
+}
+
+impl Default for QuickAskResetPolicy {
+    fn default() -> Self {
+        default_quick_ask_reset_policy()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProviderLite {
     pub id: String,
@@ -36,6 +59,8 @@ pub struct StoredSettings {
     pub hotkeys: Hotkeys,
     #[serde(rename = "quickAskProviderId", default = "default_quick_ask_provider")]
     pub quick_ask_provider_id: String,
+    #[serde(rename = "quickAskResetPolicy", default = "default_quick_ask_reset_policy")]
+    pub quick_ask_reset_policy: QuickAskResetPolicy,
     #[serde(default)]
     pub providers: Vec<ProviderLite>,
 }
@@ -45,6 +70,7 @@ impl Default for StoredSettings {
         Self {
             hotkeys: Hotkeys::default(),
             quick_ask_provider_id: default_quick_ask_provider(),
+            quick_ask_reset_policy: default_quick_ask_reset_policy(),
             providers: Vec::new(),
         }
     }
@@ -65,4 +91,38 @@ pub fn quick_ask_url(s: &StoredSettings) -> String {
         .find(|p| p.id == s.quick_ask_provider_id)
         .map(|p| p.url.clone())
         .unwrap_or_else(|| "https://chatgpt.com".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn missing_quick_ask_reset_policy_defaults_to_after5m() {
+        let settings = serde_json::from_value::<StoredSettings>(json!({})).unwrap();
+
+        assert_eq!(settings.quick_ask_reset_policy, QuickAskResetPolicy::After5m);
+    }
+
+    #[test]
+    fn deserializes_each_quick_ask_reset_policy_value() {
+        let cases = [
+            ("reopen", QuickAskResetPolicy::Reopen),
+            ("after5m", QuickAskResetPolicy::After5m),
+            ("after10m", QuickAskResetPolicy::After10m),
+            ("after20m", QuickAskResetPolicy::After20m),
+            ("after30m", QuickAskResetPolicy::After30m),
+            ("never", QuickAskResetPolicy::Never),
+        ];
+
+        for (raw, expected) in cases {
+            let settings = serde_json::from_value::<StoredSettings>(json!({
+                "quickAskResetPolicy": raw
+            }))
+            .unwrap();
+
+            assert_eq!(settings.quick_ask_reset_policy, expected);
+        }
+    }
 }
