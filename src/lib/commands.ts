@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import type { AiProvider } from "../state/types";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import type { AiProvider, LogoAction, LogoResult, ProviderLogo } from "../state/types";
 
 export interface Bounds {
   x: number;
@@ -75,4 +75,43 @@ export async function setQuickAskPinned(pinned: boolean): Promise<void> {
 /** 快捷提问窗新对话：导航回首页（已在首页则不操作） */
 export async function quickAskNewChat(): Promise<void> {
   await invoke("quick_ask_new_chat");
+}
+
+/** LogoResult → ProviderLogo：image.path 用 convertFileSrc 转成可加载 URL */
+function logoResultToProviderLogo(result: LogoResult): ProviderLogo {
+  if (result.type === "letter") return { type: "letter", color: result.color };
+  return { type: "image", src: convertFileSrc(result.path) };
+}
+
+/** 新增 provider：后端生成真实 id 与 logo，前端负责写入 settings */
+export async function addProvider(input: {
+  name: string;
+  url: string;
+  enabled: boolean;
+  logoAction: LogoAction;
+}): Promise<{ id: string; logo: ProviderLogo }> {
+  const [id, result] = await invoke<[string, LogoResult]>("add_provider", input);
+  return { id, logo: logoResultToProviderLogo(result) };
+}
+
+/** 保存已有 provider：后端校验并处理 logo，返回最终 logo 供前端写入 settings */
+export async function saveProvider(input: {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  logoAction: LogoAction;
+}): Promise<ProviderLogo> {
+  const result = await invoke<LogoResult>("validate_and_save_provider", input);
+  return logoResultToProviderLogo(result);
+}
+
+/** 删除 provider 的 logo 文件（settings 由前端更新） */
+export async function deleteProvider(id: string): Promise<void> {
+  await invoke("delete_provider", { id });
+}
+
+/** 刷新主窗口当前激活的 AI webview */
+export async function refreshActiveAiWebview(providerId: string): Promise<void> {
+  await invoke("refresh_active_ai_webview", { providerId });
 }
