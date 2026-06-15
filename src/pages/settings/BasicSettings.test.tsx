@@ -63,4 +63,15 @@ describe("BasicSettings", () => {
     const last = saveSettings.mock.calls.at(-1)![0];
     expect(last.keepStateOnSwitch).toBe(false);
   });
+
+  it("persists quick ask reset policy changes", async () => {
+    setup();
+    const select = await screen.findByRole("combobox", { name: "快捷提问重置为新对话" });
+    expect(select).toHaveValue("after5m");
+
+    await userEvent.selectOptions(select, "after10m");
+
+    const last = saveSettings.mock.calls.at(-1)![0];
+    expect(last.quickAskResetPolicy).toBe("after10m");
+  });
 });

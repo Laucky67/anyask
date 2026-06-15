@@ -4,7 +4,16 @@ import { useT } from "../../i18n";
 import { Toggle } from "../../components/Toggle";
 import { ProviderLogo } from "../../components/ProviderLogo";
 import { setQuickAskProvider } from "../../lib/commands";
-import type { ThemeMode } from "../../state/types";
+import type { QuickAskResetPolicy, ThemeMode } from "../../state/types";
+
+const quickAskResetPolicyOptions: Array<{ value: QuickAskResetPolicy; labelKey: string }> = [
+  { value: "reopen", labelKey: "basic.quickAskResetPolicy.reopen" },
+  { value: "after5m", labelKey: "basic.quickAskResetPolicy.after5m" },
+  { value: "after10m", labelKey: "basic.quickAskResetPolicy.after10m" },
+  { value: "after20m", labelKey: "basic.quickAskResetPolicy.after20m" },
+  { value: "after30m", labelKey: "basic.quickAskResetPolicy.after30m" },
+  { value: "never", labelKey: "basic.quickAskResetPolicy.never" },
+];
 
 export function BasicSettings() {
   const { settings, updateSettings } = useSettings();
@@ -111,6 +120,23 @@ export function BasicSettings() {
         >
           {settings.providers.filter((p) => p.enabled).map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </section>
+
+      <section>
+        <h3 id="quick-ask-reset-policy-label">{t("basic.quickAskResetPolicy")}</h3>
+        <select
+          aria-labelledby="quick-ask-reset-policy-label"
+          value={settings.quickAskResetPolicy}
+          onChange={(e) => {
+            updateSettings({ quickAskResetPolicy: e.target.value as QuickAskResetPolicy });
+          }}
+        >
+          {quickAskResetPolicyOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {t(option.labelKey)}
+            </option>
           ))}
         </select>
       </section>
