@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS: Settings = {
   providers: DEFAULT_PROVIDERS,
   hotkeys: { quickAsk: "Shift+Z", showMain: "CommandOrControl+Alt+Space" },
   quickAskProviderId: "chatgpt",
+  quickAskResetPolicy: "after5m",
 };
 
 /** 深拷贝默认值，避免外部修改污染常量 */
@@ -34,5 +35,6 @@ export function mergeSettings(stored: Partial<Settings> | null | undefined): Set
       showMain: stored.hotkeys?.showMain ?? base.hotkeys.showMain,
     },
     quickAskProviderId: stored.quickAskProviderId ?? base.quickAskProviderId,
+    quickAskResetPolicy: stored.quickAskResetPolicy ?? base.quickAskResetPolicy,
   };
 }

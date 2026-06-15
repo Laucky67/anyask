@@ -16,6 +16,10 @@ describe("DEFAULT_SETTINGS", () => {
     expect(DEFAULT_SETTINGS.hotkeys.quickAsk).toBe("Shift+Z");
     expect(DEFAULT_SETTINGS.hotkeys.showMain).toBe("CommandOrControl+Alt+Space");
   });
+
+  it("defaults quickAskResetPolicy to after5m", () => {
+    expect(DEFAULT_SETTINGS.quickAskResetPolicy).toBe("after5m");
+  });
 });
 
 describe("mergeSettings", () => {
@@ -28,6 +32,16 @@ describe("mergeSettings", () => {
     expect(merged.theme).toBe("dark");
     expect(merged.keepStateOnSwitch).toBe(true);
     expect(merged.providers).toHaveLength(3);
+  });
+
+  it("fills missing quickAskResetPolicy from defaults", () => {
+    const merged = mergeSettings({ theme: "dark" });
+    expect(merged.quickAskResetPolicy).toBe("after5m");
+  });
+
+  it("keeps stored quickAskResetPolicy", () => {
+    const merged = mergeSettings({ quickAskResetPolicy: "never" });
+    expect(merged.quickAskResetPolicy).toBe("never");
   });
 
   it("keeps stored providers when present", () => {

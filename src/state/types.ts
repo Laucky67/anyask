@@ -18,6 +18,8 @@ export interface Hotkeys {
   showMain: string;
 }
 
+export type QuickAskResetPolicy = "reopen" | "after5m" | "after10m" | "after20m" | "after30m" | "never";
+
 export interface Settings {
   language: Language;
   theme: ThemeMode;
@@ -25,4 +27,5 @@ export interface Settings {
   providers: AiProvider[];
   hotkeys: Hotkeys;
   quickAskProviderId: string;
+  quickAskResetPolicy: QuickAskResetPolicy;
 }
