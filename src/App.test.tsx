@@ -13,6 +13,7 @@ vi.mock("./lib/commands", () => ({
   syncAiWebviews: vi.fn().mockResolvedValue(undefined),
   hideAiWebviews: vi.fn().mockResolvedValue(undefined),
   repositionAiWebviews: vi.fn().mockResolvedValue(undefined),
+  refreshActiveAiWebview: vi.fn().mockResolvedValue(undefined),
 }));
 
 import App from "./App";

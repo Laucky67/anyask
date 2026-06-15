@@ -1,3 +1,4 @@
+import { RotateCw, Settings } from "lucide-react";
 import type { AiProvider } from "../state/types";
 import { ProviderLogo } from "./ProviderLogo";
 import { useT } from "../i18n";
@@ -8,9 +9,10 @@ interface Props {
   settingsActive: boolean;
   onSelect: (id: string) => void;
   onOpenSettings: () => void;
+  onRefresh: () => void;
 }
 
-export function Sidebar({ providers, activeId, settingsActive, onSelect, onOpenSettings }: Props) {
+export function Sidebar({ providers, activeId, settingsActive, onSelect, onOpenSettings, onRefresh }: Props) {
   const t = useT();
   return (
     <nav
@@ -49,18 +51,21 @@ export function Sidebar({ providers, activeId, settingsActive, onSelect, onOpenS
       </div>
       <button
         type="button"
+        aria-label={t("sidebar.refresh")}
+        title={t("sidebar.refresh")}
+        onClick={onRefresh}
+        style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--fg-muted)", display: "flex", padding: 4 }}
+      >
+        <RotateCw size={22} />
+      </button>
+      <button
+        type="button"
         aria-label={t("sidebar.settings")}
         title={t("sidebar.settings")}
         onClick={onOpenSettings}
-        style={{
-          border: "none",
-          background: "transparent",
-          cursor: "pointer",
-          fontSize: 22,
-          color: settingsActive ? "var(--accent)" : "var(--fg-muted)",
-        }}
+        style={{ border: "none", background: "transparent", cursor: "pointer", color: settingsActive ? "var(--accent)" : "var(--fg-muted)", display: "flex", padding: 4 }}
       >
-        ⚙
+        <Settings size={22} />
       </button>
     </nav>
   );
