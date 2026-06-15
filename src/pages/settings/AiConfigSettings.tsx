@@ -1,79 +1,173 @@
 import { useState } from "react";
+import { Plus } from "lucide-react";
 import { useSettings } from "../../state/SettingsContext";
 import { useT } from "../../i18n";
-import { ProviderLogo } from "../../components/ProviderLogo";
-import { Toggle } from "../../components/Toggle";
-import type { AiProvider } from "../../state/types";
+import { ProviderCard } from "../../components/ProviderCard";
+import { ProviderEditPanel } from "./ProviderEditPanel";
+import { validateProvider, canDisableProvider } from "../../lib/providerValidation";
+import { logoActionFromDraft } from "../../lib/logo";
+import { addProvider, saveProvider, deleteProvider } from "../../lib/commands";
+import type { AiProvider, DraftProvider, Settings, ValidationErrors } from "../../state/types";
+
+const TEMP_PREFIX = "temp-";
 
 export function AiConfigSettings() {
   const { settings, updateSettings } = useSettings();
   const t = useT();
   const [openId, setOpenId] = useState<string | null>(null);
-  const [blockedId, setBlockedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<DraftProvider | null>(null);
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [tempProvider, setTempProvider] = useState<DraftProvider | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const patchProvider = (id: string, patch: Partial<AiProvider>) => {
-    updateSettings({
-      providers: settings.providers.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-    });
+  const isTemp = (id: string) => id.startsWith(TEMP_PREFIX);
+
+  const closeCard = () => {
+    setOpenId(null);
+    setDraft(null);
+    setErrors({});
+    setTempProvider(null);
   };
 
-  // 禁止停用快捷提问正在使用的 provider（保证默认 AI 恒为 enabled）
-  const setEnabled = (id: string, enabled: boolean) => {
-    if (!enabled && id === settings.quickAskProviderId) {
-      setBlockedId(id);
-      return;
+  const openCard = (p: AiProvider) => {
+    if (tempProvider) return; // 有临时新增时不允许展开其它
+    setOpenId(p.id);
+    setDraft({ ...p });
+    setErrors({});
+  };
+
+  const handleAdd = () => {
+    const id = `${TEMP_PREFIX}${Date.now()}`;
+    const temp: DraftProvider = {
+      id,
+      name: t("ai.newProvider"),
+      url: "",
+      enabled: true,
+      logo: { type: "letter", color: "#808080" },
+    };
+    setTempProvider(temp);
+    setOpenId(id);
+    setDraft(temp);
+    setErrors({});
+  };
+
+  const changeDraft = (patch: Partial<DraftProvider>) => setDraft((d) => (d ? { ...d, ...patch } : d));
+
+  const save = async () => {
+    if (!draft) return;
+    const errs = validateProvider(draft);
+    setErrors(errs);
+    if (errs.name || errs.url) return;
+    setSaving(true);
+    try {
+      const action = logoActionFromDraft(draft);
+      const name = draft.name.trim();
+      const url = draft.url.trim();
+      if (isTemp(draft.id)) {
+        const { id, logo } = await addProvider({ name, url, enabled: draft.enabled, logoAction: action });
+        const next: AiProvider = { id, name, url, enabled: draft.enabled, logo };
+        await updateSettings({ providers: [...settings.providers, next] });
+      } else {
+        const logo = await saveProvider({ id: draft.id, name, url, enabled: draft.enabled, logoAction: action });
+        const updated: AiProvider = { id: draft.id, name, url, enabled: draft.enabled, logo };
+        const nextProviders = settings.providers.map((p) => (p.id === draft.id ? updated : p));
+        const patch: Partial<Settings> = { providers: nextProviders };
+        if (!draft.enabled && draft.id === settings.quickAskProviderId) {
+          const firstEnabled = nextProviders.find((p) => p.enabled);
+          if (firstEnabled) patch.quickAskProviderId = firstEnabled.id;
+        }
+        await updateSettings(patch);
+      }
+      closeCard();
+    } catch {
+      setErrors((e) => ({ ...e, general: "errors.saveFailed" }));
+    } finally {
+      setSaving(false);
     }
-    setBlockedId(null);
-    patchProvider(id, { enabled });
   };
+
+  const remove = async () => {
+    if (!draft || isTemp(draft.id)) return;
+    // 兜底：唯一启用项不可删（UI 已禁用按钮，此处再防御一层）
+    if (draft.enabled && !canDisableProvider(settings.providers)) return;
+    if (!window.confirm(t("ai.deleteConfirm").replace("{name}", draft.name))) return;
+    try {
+      await deleteProvider(draft.id);
+      const nextProviders = settings.providers.filter((p) => p.id !== draft.id);
+      const patch: Partial<Settings> = { providers: nextProviders };
+      if (draft.id === settings.quickAskProviderId) {
+        const firstEnabled = nextProviders.find((p) => p.enabled);
+        if (firstEnabled) patch.quickAskProviderId = firstEnabled.id;
+      }
+      await updateSettings(patch);
+      closeCard();
+    } catch {
+      setErrors((e) => ({ ...e, general: "errors.saveFailed" }));
+    }
+  };
+
+  const cardWrap = { display: "flex", flexDirection: "column" } as const;
 
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 8, maxWidth: 640 }}>
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 8, maxWidth: 800 }}>
       {settings.providers.map((p) => {
         const open = openId === p.id;
         return (
-          <div key={p.id} style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-            <button
-              type="button"
-              aria-label={`展开 ${p.name}`}
-              aria-expanded={open}
-              onClick={() => setOpenId(open ? null : p.id)}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 12, background: "transparent", border: "none", cursor: "pointer", color: "var(--fg)" }}
-            >
-              <ProviderLogo name={p.name} logo={p.logo} size={28} />
-              <span style={{ flex: 1, textAlign: "left" }}>{p.name}</span>
-              <span style={{ color: "var(--fg-muted)" }}>{open ? "▲" : "▼"}</span>
-            </button>
-            {open && (
-              <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--border)" }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span style={{ fontSize: 13, color: "var(--fg-muted)" }}>{t("ai.name")}</span>
-                  <input
-                    aria-label={`${p.name} 服务商名称`}
-                    value={p.name}
-                    onChange={(e) => patchProvider(p.id, { name: e.target.value })}
-                  />
-                </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span style={{ fontSize: 13, color: "var(--fg-muted)" }}>{t("ai.url")}</span>
-                  <input
-                    aria-label={`${p.name} 官网地址`}
-                    value={p.url}
-                    onChange={(e) => patchProvider(p.id, { url: e.target.value })}
-                  />
-                </label>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ fontSize: 13, color: "var(--fg-muted)" }}>{t("ai.enabled")}</span>
-                  <Toggle checked={p.enabled} label={`${p.name} ${t("ai.enabled")}`} onChange={(v) => setEnabled(p.id, v)} />
-                  {blockedId === p.id && (
-                    <span style={{ color: "#e0a23a", fontSize: 12 }}>{t("settings.inUseByQuickAsk")}</span>
-                  )}
-                </div>
-              </div>
+          <div key={p.id} style={cardWrap}>
+            <ProviderCard
+              name={p.name}
+              logo={p.logo}
+              arrow={open ? "up" : "down"}
+              onClick={() => {
+                if (tempProvider) return;
+                if (open) closeCard();
+                else openCard(p);
+              }}
+            />
+            {open && draft && (
+              <ProviderEditPanel
+                draft={draft}
+                errors={errors}
+                isTemp={false}
+                canDisable={canDisableProvider(settings.providers)}
+                saving={saving}
+                onChange={changeDraft}
+                onSave={() => void save()}
+                onCancel={closeCard}
+                onDelete={() => void remove()}
+              />
             )}
           </div>
         );
       })}
+
+      {tempProvider && draft && openId === tempProvider.id && (
+        <div style={cardWrap}>
+          <ProviderCard name={draft.name} logo={draft.logo} arrow="up" />
+          <ProviderEditPanel
+            draft={draft}
+            errors={errors}
+            isTemp
+            canDisable
+            saving={saving}
+            onChange={changeDraft}
+            onSave={() => void save()}
+            onCancel={closeCard}
+            onDelete={() => {}}
+          />
+        </div>
+      )}
+
+      {!tempProvider && (
+        <button
+          type="button"
+          aria-label={t("ai.add")}
+          onClick={handleAdd}
+          style={{ width: "100%", height: 60, display: "flex", alignItems: "center", justifyContent: "center", border: "2px dashed var(--border)", borderRadius: 10, background: "transparent", color: "var(--fg-muted)", cursor: "pointer" }}
+        >
+          <Plus size={24} />
+        </button>
+      )}
     </div>
   );
 }
