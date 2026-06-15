@@ -49,6 +49,9 @@ pub fn run() {
             commands::hide_quick_ask,
             commands::set_quick_ask_pinned,
             commands::quick_ask_new_chat,
+            commands::add_provider,
+            commands::validate_and_save_provider,
+            commands::delete_provider,
             webviews::sync_ai_webviews,
             webviews::hide_ai_webviews,
             webviews::reposition_ai_webviews

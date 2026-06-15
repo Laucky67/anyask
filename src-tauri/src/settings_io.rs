@@ -10,6 +10,7 @@ fn default_quick_ask() -> String { DEFAULT_QUICK_ASK.into() }
 fn default_show_main() -> String { DEFAULT_SHOW_MAIN.into() }
 fn default_quick_ask_provider() -> String { DEFAULT_QUICK_ASK_PROVIDER.into() }
 fn default_quick_ask_reset_policy() -> QuickAskResetPolicy { QuickAskResetPolicy::After5m }
+fn default_true() -> bool { true }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Hotkeys {
@@ -51,6 +52,8 @@ impl Default for QuickAskResetPolicy {
 pub struct ProviderLite {
     pub id: String,
     pub url: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -93,6 +96,11 @@ pub fn quick_ask_url(s: &StoredSettings) -> String {
         .unwrap_or_else(|| "https://chatgpt.com".into())
 }
 
+/// 在 providers 中是否存在「除 excluding_id 外仍启用」的项
+pub fn other_enabled_exists(providers: &[ProviderLite], excluding_id: &str) -> bool {
+    providers.iter().any(|p| p.id != excluding_id && p.enabled)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,5 +132,24 @@ mod tests {
 
             assert_eq!(settings.quick_ask_reset_policy, expected);
         }
+    }
+
+    fn lite(id: &str, enabled: bool) -> ProviderLite {
+        ProviderLite { id: id.into(), url: "https://x.com".into(), enabled }
+    }
+
+    #[test]
+    fn other_enabled_exists_detects_remaining_enabled() {
+        let providers = vec![lite("a", true), lite("b", false), lite("c", true)];
+        assert!(other_enabled_exists(&providers, "a")); // c 仍启用
+        assert!(other_enabled_exists(&providers, "c")); // a 仍启用
+        let only_one = vec![lite("a", true), lite("b", false)];
+        assert!(!other_enabled_exists(&only_one, "a")); // 停用 a 后无其它启用
+    }
+
+    #[test]
+    fn provider_lite_enabled_defaults_true() {
+        let p = serde_json::from_value::<ProviderLite>(json!({ "id": "x", "url": "https://x.com" })).unwrap();
+        assert!(p.enabled);
     }
 }
