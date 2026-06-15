@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { ProviderLogo } from "./ProviderLogo";
 import type { ProviderLogo as ProviderLogoType } from "../state/types";
 
@@ -10,13 +11,15 @@ interface Props {
   /** 宽度，默认 "100%" 随父容器自适应；也可传固定值控制 */
   width?: number | string;
   logoSize?: number;
+  /** 右侧箭头：不传 = 不显示；"up" 展开态，"down" 折叠态 */
+  arrow?: "up" | "down";
 }
 
 /**
  * 可复用的 provider 卡片：圆角矩形，左 Logo + 右 Name。
  * 等宽卡片下各卡 logo 左对齐、文字右缘对齐。零业务依赖，可在选择器/设置页复用。
  */
-export function ProviderCard({ name, logo, selected, onClick, width = "100%", logoSize = 28 }: Props) {
+export function ProviderCard({ name, logo, selected, onClick, width = "100%", logoSize = 28, arrow }: Props) {
   const [hover, setHover] = useState(false);
   const active = selected || hover;
 
@@ -43,6 +46,8 @@ export function ProviderCard({ name, logo, selected, onClick, width = "100%", lo
       >
         {name}
       </span>
+      {arrow === "up" && <ChevronUp size={18} color="var(--fg-muted)" />}
+      {arrow === "down" && <ChevronDown size={18} color="var(--fg-muted)" />}
     </>
   );
 

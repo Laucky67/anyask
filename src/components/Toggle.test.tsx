@@ -14,4 +14,10 @@ describe("Toggle", () => {
     await userEvent.click(screen.getByRole("switch"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
+  it("does not call onChange when disabled", async () => {
+    const onChange = vi.fn();
+    render(<Toggle checked={true} label="启用" disabled onChange={onChange} />);
+    await userEvent.click(screen.getByRole("switch"));
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
