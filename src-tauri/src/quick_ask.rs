@@ -1,9 +1,11 @@
+use std::time::Duration;
+
 use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, Url, WebviewBuilder, WebviewUrl,
     WebviewWindowBuilder,
 };
 
-use crate::settings_io::{quick_ask_url, read_settings};
+use crate::settings_io::{quick_ask_url, read_settings, QuickAskResetPolicy};
 use crate::state::AppState;
 
 const LABEL: &str = "quick-ask";
@@ -11,6 +13,37 @@ const AI_LABEL: &str = "quick-ask-ai"; // 顶栏下方承载 AI 站点的子 web
 const WIDTH: f64 = 400.0;
 const HEIGHT: f64 = 600.0;
 const TOPBAR_HEIGHT: f64 = 40.0; // 必须与前端 QuickAskBar 高度一致
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResetDelay {
+    Immediate,
+    After(Duration),
+    Never,
+}
+
+fn reset_delay(policy: QuickAskResetPolicy) -> ResetDelay {
+    match policy {
+        QuickAskResetPolicy::Reopen => ResetDelay::Immediate,
+        QuickAskResetPolicy::After5m => ResetDelay::After(Duration::from_secs(5 * 60)),
+        QuickAskResetPolicy::After10m => ResetDelay::After(Duration::from_secs(10 * 60)),
+        QuickAskResetPolicy::After20m => ResetDelay::After(Duration::from_secs(20 * 60)),
+        QuickAskResetPolicy::After30m => ResetDelay::After(Duration::from_secs(30 * 60)),
+        QuickAskResetPolicy::Never => ResetDelay::Never,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VisibleToggleAction {
+    Hide,
+    Raise,
+}
+
+fn visible_toggle_action(focused: Result<bool, ()>) -> VisibleToggleAction {
+    match focused {
+        Ok(true) => VisibleToggleAction::Hide,
+        Ok(false) | Err(()) => VisibleToggleAction::Raise,
+    }
+}
 
 fn target_url(app: &AppHandle) -> String {
     let state = app.state::<AppState>();
@@ -161,4 +194,42 @@ fn center_bottom(win: &tauri::Window) {
     let x = (screen.width as i32 - w) / 2;
     let y = (screen.height as i32 - h) - (screen.height as i32 / 12); // 偏下，留出底部边距
     let _ = win.set_position(tauri::PhysicalPosition::new(x.max(0), y.max(0)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings_io::QuickAskResetPolicy;
+    use std::time::Duration;
+
+    #[test]
+    fn reset_delay_maps_each_policy() {
+        let cases = [
+            (QuickAskResetPolicy::Reopen, ResetDelay::Immediate),
+            (QuickAskResetPolicy::After5m, ResetDelay::After(Duration::from_secs(5 * 60))),
+            (QuickAskResetPolicy::After10m, ResetDelay::After(Duration::from_secs(10 * 60))),
+            (QuickAskResetPolicy::After20m, ResetDelay::After(Duration::from_secs(20 * 60))),
+            (QuickAskResetPolicy::After30m, ResetDelay::After(Duration::from_secs(30 * 60))),
+            (QuickAskResetPolicy::Never, ResetDelay::Never),
+        ];
+
+        for (policy, expected) in cases {
+            assert_eq!(reset_delay(policy), expected);
+        }
+    }
+
+    #[test]
+    fn visible_focused_window_hides_on_hotkey() {
+        assert_eq!(visible_toggle_action(Ok(true)), VisibleToggleAction::Hide);
+    }
+
+    #[test]
+    fn visible_unfocused_window_raises_on_hotkey() {
+        assert_eq!(visible_toggle_action(Ok(false)), VisibleToggleAction::Raise);
+    }
+
+    #[test]
+    fn focus_lookup_failure_raises_instead_of_hiding() {
+        assert_eq!(visible_toggle_action(Err(())), VisibleToggleAction::Raise);
+    }
 }
