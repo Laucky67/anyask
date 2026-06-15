@@ -45,14 +45,33 @@ describe("BasicSettings", () => {
     expect(last.providers.find((p: any) => p.id === "claude").enabled).toBe(false);
   });
 
-  it("blocks disabling the provider quick-ask is using, and shows a hint", async () => {
+  it("switches quickAskProviderId when disabling the in-use provider (others enabled)", async () => {
     setup();
     await waitFor(() => screen.getByRole("button", { name: /ChatGPT 启用状态/ }));
     await act(async () => {
-      // ChatGPT 是 DEFAULT_SETTINGS.quickAskProviderId
+      // ChatGPT 是默认 quickAskProviderId，但仍有其它启用项，可停用并自动切换默认
       (await screen.findByRole("button", { name: /ChatGPT 启用状态/ })).click();
     });
-    expect(screen.getByText("快捷提问正在使用，无法停用")).toBeInTheDocument();
+    const last = saveSettings.mock.calls.at(-1)![0];
+    expect(last.providers.find((p: any) => p.id === "chatgpt").enabled).toBe(false);
+    expect(last.quickAskProviderId).toBe("claude");
+  });
+
+  it("blocks disabling the last enabled provider", async () => {
+    setup();
+    await waitFor(() => screen.getByRole("button", { name: /ChatGPT 启用状态/ }));
+    await act(async () => {
+      (await screen.findByRole("button", { name: /Claude 启用状态/ })).click();
+    });
+    await act(async () => {
+      (await screen.findByRole("button", { name: /Google AI Studio 启用状态/ })).click();
+    });
+    saveSettings.mockClear();
+    await act(async () => {
+      // 此时仅剩 ChatGPT 启用，停用应被拦下
+      (await screen.findByRole("button", { name: /ChatGPT 启用状态/ })).click();
+    });
+    expect(screen.getByText("至少需要保留一个启用的AI")).toBeInTheDocument();
     expect(saveSettings).not.toHaveBeenCalled();
   });
 

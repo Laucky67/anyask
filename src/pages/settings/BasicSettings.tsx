@@ -4,7 +4,7 @@ import { useT } from "../../i18n";
 import { Toggle } from "../../components/Toggle";
 import { ProviderLogo } from "../../components/ProviderLogo";
 import { setQuickAskProvider } from "../../lib/commands";
-import type { QuickAskResetPolicy, ThemeMode } from "../../state/types";
+import type { QuickAskResetPolicy, Settings, ThemeMode } from "../../state/types";
 
 const quickAskResetPolicyOptions: Array<{ value: QuickAskResetPolicy; labelKey: string }> = [
   { value: "reopen", labelKey: "basic.quickAskResetPolicy.reopen" },
@@ -21,15 +21,21 @@ export function BasicSettings() {
   const [inUseHint, setInUseHint] = useState(false);
 
   const setProviderEnabled = (id: string, enabled: boolean) => {
-    // 禁止停用快捷提问正在使用的 provider（保证默认 AI 恒为 enabled）
-    if (!enabled && id === settings.quickAskProviderId) {
+    const enabledCount = settings.providers.filter((p) => p.enabled).length;
+    // 至少保留一个启用
+    if (!enabled && enabledCount <= 1) {
       setInUseHint(true);
       return;
     }
     setInUseHint(false);
-    updateSettings({
-      providers: settings.providers.map((p) => (p.id === id ? { ...p, enabled } : p)),
-    });
+    const nextProviders = settings.providers.map((p) => (p.id === id ? { ...p, enabled } : p));
+    const patch: Partial<Settings> = { providers: nextProviders };
+    // 若停用的是快捷提问当前使用的 provider，切到第一个启用的
+    if (!enabled && id === settings.quickAskProviderId) {
+      const firstEnabled = nextProviders.find((p) => p.enabled);
+      if (firstEnabled) patch.quickAskProviderId = firstEnabled.id;
+    }
+    updateSettings(patch);
   };
 
   return (
@@ -91,7 +97,7 @@ export function BasicSettings() {
           ))}
         </div>
         {inUseHint && (
-          <p style={{ color: "#e0a23a", fontSize: 12, marginTop: 8 }}>{t("settings.inUseByQuickAsk")}</p>
+          <p style={{ color: "#e0a23a", fontSize: 12, marginTop: 8 }}>{t("settings.atLeastOneEnabled")}</p>
         )}
       </section>
 
