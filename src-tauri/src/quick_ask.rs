@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::atomic::Ordering, time::Duration};
 
 use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, Url, WebviewBuilder, WebviewUrl,
@@ -64,6 +64,84 @@ fn raise(win: &tauri::Window, pinned: bool) {
     }
 }
 
+fn next_reset_generation(app: &AppHandle) -> u64 {
+    app.state::<AppState>()
+        .quick_ask_reset_generation
+        .fetch_add(1, Ordering::SeqCst)
+        + 1
+}
+
+fn is_reset_generation_current(app: &AppHandle, generation: u64) -> bool {
+    app.state::<AppState>()
+        .quick_ask_reset_generation
+        .load(Ordering::SeqCst)
+        == generation
+}
+
+pub fn cancel_pending_reset(app: &AppHandle) {
+    let _ = next_reset_generation(app);
+}
+
+fn schedule_reset_after_hide(app: &AppHandle, policy: QuickAskResetPolicy) {
+    let generation = next_reset_generation(app);
+    match reset_delay(policy) {
+        ResetDelay::Immediate => {
+            let _ = dispose_quick_ask_window(app, generation);
+        }
+        ResetDelay::After(duration) => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(duration).await;
+                let _ = dispose_if_still_hidden(&app, generation);
+            });
+        }
+        ResetDelay::Never => {}
+    }
+}
+
+fn dispose_if_still_hidden(app: &AppHandle, generation: u64) -> Result<(), String> {
+    if !is_reset_generation_current(app, generation) {
+        return Ok(());
+    }
+
+    let Some(win) = app.get_window(LABEL) else {
+        return Ok(());
+    };
+
+    let visible = win.is_visible().unwrap_or(true);
+    let focused = win.is_focused().unwrap_or(true);
+    if !visible && !focused {
+        dispose_quick_ask_window(app, generation)?;
+    }
+
+    Ok(())
+}
+
+fn dispose_quick_ask_window(app: &AppHandle, generation: u64) -> Result<(), String> {
+    if !is_reset_generation_current(app, generation) {
+        return Ok(());
+    }
+
+    if let Some(win) = app.get_window(LABEL) {
+        win.close().map_err(|e| e.to_string())?;
+    }
+
+    if let Some(wv) = app.get_webview(AI_LABEL) {
+        wv.close().map_err(|e| e.to_string())?;
+    }
+
+    cancel_pending_reset(app);
+    Ok(())
+}
+
+fn hide_with_reset_policy(app: &AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_window(LABEL) {
+        win.hide().map_err(|e| e.to_string())?;
+        schedule_reset_after_hide(app, read_settings(app).quick_ask_reset_policy);
+    }
+    Ok(())
+}
+
 /// 切换显隐；不存在则创建（本地 React 壳 + 顶栏下方的 AI 子 webview）
 pub fn toggle(app: &AppHandle) {
     let pinned = *app.state::<AppState>().quick_ask_pinned.lock().unwrap();
@@ -72,10 +150,20 @@ pub fn toggle(app: &AppHandle) {
     // get_webview_window 仅对单 webview 窗口返回 Some，此处会得到 None。
     if let Some(win) = app.get_window(LABEL) {
         match win.is_visible() {
-            Ok(true) => {
-                let _ = win.hide();
-            }
+            Ok(true) => match visible_toggle_action(win.is_focused().map_err(|_| ())) {
+                VisibleToggleAction::Hide => {
+                    let _ = hide_with_reset_policy(app);
+                }
+                VisibleToggleAction::Raise => {
+                    cancel_pending_reset(app);
+                    raise(&win, pinned);
+                    if let Some(wv) = app.get_webview(AI_LABEL) {
+                        let _ = wv.show();
+                    }
+                }
+            },
             _ => {
+                cancel_pending_reset(app);
                 raise(&win, pinned);
                 // 兜底：无论 React 面板此前是否处于「隐藏 AI」状态，呼出即强制显示 AI，
                 // 避免「面板开着时被隐藏 → 再呼出」卡在 AI 不可见。
@@ -111,6 +199,7 @@ pub fn toggle(app: &AppHandle) {
         LogicalSize::new(WIDTH, HEIGHT - TOPBAR_HEIGHT),
     );
 
+    cancel_pending_reset(app);
     center_bottom(&window);
     raise(&window, pinned);
 }
@@ -140,10 +229,7 @@ pub fn set_ai_visible(app: &AppHandle, visible: bool) -> Result<(), String> {
 
 /// 隐藏悬浮窗（顶栏「隐藏」按钮）
 pub fn hide(app: &AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_window(LABEL) {
-        win.hide().map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    hide_with_reset_policy(app)
 }
 
 /// 设置置顶（顶栏「图钉」按钮）。先改窗口、成功后再写状态，

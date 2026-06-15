@@ -7,7 +7,7 @@ mod state;
 mod tray;
 mod webviews;
 
-use tauri::WindowEvent;
+use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,6 +27,11 @@ pub fn run() {
                     api.prevent_close();
                     let _ = window.hide();
                 }
+                return;
+            }
+
+            if window.label() == "quick-ask" && matches!(event, WindowEvent::Focused(true)) {
+                quick_ask::cancel_pending_reset(window.app_handle());
             }
         })
         .invoke_handler(tauri::generate_handler![

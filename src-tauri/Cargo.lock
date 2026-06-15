@@ -53,6 +53,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-store",
  "time",
+ "tokio",
 ]
 
 [[package]]
