@@ -13,22 +13,29 @@ interface Props {
   logoSize?: number;
   /** 右侧箭头：不传 = 不显示；"up" 展开态，"down" 折叠态 */
   arrow?: "up" | "down";
+  /** 尺寸：sm(默认)=快捷提问紧凑；lg=设置页更高、字更大更粗 */
+  size?: "sm" | "lg";
 }
 
 /**
  * 可复用的 provider 卡片：圆角矩形，左 Logo + 右 Name。
  * 等宽卡片下各卡 logo 左对齐、文字右缘对齐。零业务依赖，可在选择器/设置页复用。
  */
-export function ProviderCard({ name, logo, selected, onClick, width = "100%", logoSize = 28, arrow }: Props) {
+export function ProviderCard({ name, logo, selected, onClick, width = "100%", logoSize, arrow, size = "sm" }: Props) {
   const [hover, setHover] = useState(false);
   const active = selected || hover;
+  const dims =
+    size === "lg"
+      ? { pad: "14px 16px", font: 16, weight: 600, logo: 32 }
+      : { pad: "8px 12px", font: 14, weight: 400, logo: 28 };
+  const ls = logoSize ?? dims.logo;
 
   const style: CSSProperties = {
     display: "flex",
     alignItems: "center",
     gap: 10,
     width,
-    padding: "8px 12px",
+    padding: dims.pad,
     border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
     borderRadius: 10,
     background: active ? "var(--bg-elev)" : "transparent",
@@ -36,13 +43,14 @@ export function ProviderCard({ name, logo, selected, onClick, width = "100%", lo
     cursor: onClick ? "pointer" : "default",
     textAlign: "left",
     boxSizing: "border-box",
+    fontSize: dims.font,
   };
 
   const content = (
     <>
-      <ProviderLogo name={name} logo={logo} size={logoSize} />
+      <ProviderLogo name={name} logo={logo} size={ls} />
       <span
-        style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        style={{ flex: 1, textAlign: "left", fontWeight: dims.weight, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
       >
         {name}
       </span>

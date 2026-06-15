@@ -109,7 +109,7 @@ export function AiConfigSettings() {
   const cardWrap = { display: "flex", flexDirection: "column" } as const;
 
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 8, maxWidth: 800 }}>
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 8 }}>
       {settings.providers.map((p) => {
         const open = openId === p.id;
         return (
@@ -118,6 +118,7 @@ export function AiConfigSettings() {
               name={p.name}
               logo={p.logo}
               arrow={open ? "up" : "down"}
+              size="lg"
               onClick={() => {
                 if (tempProvider) return;
                 if (open) closeCard();
@@ -143,7 +144,7 @@ export function AiConfigSettings() {
 
       {tempProvider && draft && openId === tempProvider.id && (
         <div style={cardWrap}>
-          <ProviderCard name={draft.name} logo={draft.logo} arrow="up" />
+          <ProviderCard name={draft.name} logo={draft.logo} arrow="up" size="lg" />
           <ProviderEditPanel
             draft={draft}
             errors={errors}

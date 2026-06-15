@@ -78,9 +78,12 @@ export async function quickAskNewChat(): Promise<void> {
 }
 
 /** LogoResult → ProviderLogo：image.path 用 convertFileSrc 转成可加载 URL */
-function logoResultToProviderLogo(result: LogoResult): ProviderLogo {
+function logoResultToProviderLogo(result: LogoResult, bustCache = false): ProviderLogo {
   if (result.type === "letter") return { type: "letter", color: result.color };
-  return { type: "image", src: convertFileSrc(result.path) };
+  const url = convertFileSrc(result.path);
+  // 同名覆盖（替换 Logo）时文件路径不变 → URL 不变 → 浏览器命中旧图缓存、各处不刷新。
+  // 上传场景追加版本号，强制 <img> 重新拉取。
+  return { type: "image", src: bustCache ? `${url}?v=${Date.now()}` : url };
 }
 
 /** 新增 provider：后端生成真实 id 与 logo，前端负责写入 settings */
@@ -91,7 +94,7 @@ export async function addProvider(input: {
   logoAction: LogoAction;
 }): Promise<{ id: string; logo: ProviderLogo }> {
   const [id, result] = await invoke<[string, LogoResult]>("add_provider", input);
-  return { id, logo: logoResultToProviderLogo(result) };
+  return { id, logo: logoResultToProviderLogo(result, input.logoAction.type === "upload") };
 }
 
 /** 保存已有 provider：后端校验并处理 logo，返回最终 logo 供前端写入 settings */
@@ -103,7 +106,7 @@ export async function saveProvider(input: {
   logoAction: LogoAction;
 }): Promise<ProviderLogo> {
   const result = await invoke<LogoResult>("validate_and_save_provider", input);
-  return logoResultToProviderLogo(result);
+  return logoResultToProviderLogo(result, input.logoAction.type === "upload");
 }
 
 /** 删除 provider 的 logo 文件（settings 由前端更新） */
