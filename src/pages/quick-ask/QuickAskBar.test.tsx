@@ -16,11 +16,21 @@ vi.mock("../../lib/commands", () => ({
   setQuickAskAiVisible: (v: boolean) => setQuickAskAiVisible(v),
 }));
 
+const settingsState = vi.hoisted(() => ({ value: null as unknown }));
 const saveSettings = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../state/settingsStore", () => ({
-  loadSettings: () => Promise.resolve(DEFAULT_SETTINGS),
+  loadSettings: () => Promise.resolve(settingsState.value ?? DEFAULT_SETTINGS),
   saveSettings: (s: unknown) => saveSettings(s),
   SETTINGS_CHANGED_EVENT: "settings:changed",
+}));
+
+// 捕获 SETTINGS_CHANGED_EVENT 监听器；context 在非 Tauri 环境本会吞掉 listen，这里改为可注入
+const ev = vi.hoisted(() => ({ cb: null as null | ((e: { payload: unknown }) => void) }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (_name: string, cb: (e: { payload: unknown }) => void) => {
+    ev.cb = cb;
+    return Promise.resolve(() => {});
+  },
 }));
 
 // 暴露 onFocusChanged 回调，供测试模拟窗口失焦
@@ -54,6 +64,8 @@ beforeEach(() => {
     m.mockResolvedValue(undefined);
   }
   h.cb = null;
+  settingsState.value = null;
+  ev.cb = null;
 });
 
 describe("QuickAskBar", () => {
@@ -146,5 +158,41 @@ describe("QuickAskBar", () => {
       h.cb?.({ payload: false });
     });
     await waitFor(() => expect(setQuickAskAiVisible).toHaveBeenCalledWith(true));
+  });
+
+  it("auto-switches quick-ask provider when the saved one is no longer enabled", async () => {
+    settingsState.value = {
+      ...DEFAULT_SETTINGS,
+      providers: DEFAULT_SETTINGS.providers.map((p) =>
+        p.id === "chatgpt" ? { ...p, enabled: false } : p
+      ),
+      quickAskProviderId: "chatgpt",
+    };
+    setup();
+    await waitFor(() => {
+      const last = saveSettings.mock.calls.at(-1)?.[0];
+      expect(last?.quickAskProviderId).toBe("claude");
+    });
+    expect(setQuickAskProvider).toHaveBeenCalledWith("https://claude.ai");
+  });
+
+  it("re-navigates when the current provider's url changes (same id)", async () => {
+    setup();
+    await waitFor(() => screen.getByRole("button", { name: "选择 AI" }));
+    setQuickAskProvider.mockClear();
+    // 另一个窗口把当前默认 provider（chatgpt）的 url 改了，广播完整 settings
+    await act(async () => {
+      ev.cb?.({
+        payload: {
+          ...DEFAULT_SETTINGS,
+          providers: DEFAULT_SETTINGS.providers.map((p) =>
+            p.id === "chatgpt" ? { ...p, url: "https://chat.openai.com/new" } : p
+          ),
+        },
+      });
+    });
+    await waitFor(() =>
+      expect(setQuickAskProvider).toHaveBeenCalledWith("https://chat.openai.com/new")
+    );
   });
 });
