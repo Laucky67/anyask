@@ -15,6 +15,7 @@ describe("DEFAULT_SETTINGS", () => {
   it("default hotkeys", () => {
     expect(DEFAULT_SETTINGS.hotkeys.quickAsk).toBe("Shift+Z");
     expect(DEFAULT_SETTINGS.hotkeys.showMain).toBe("CommandOrControl+Alt+Space");
+    expect(DEFAULT_SETTINGS.hotkeys.selectionToolbar).toBe("Alt+Q");
   });
 
   it("defaults quickAskResetPolicy to after5m", () => {
@@ -42,6 +43,10 @@ describe("mergeSettings", () => {
   it("keeps stored quickAskResetPolicy", () => {
     const merged = mergeSettings({ quickAskResetPolicy: "never" });
     expect(merged.quickAskResetPolicy).toBe("never");
+  });
+
+  it("fills missing selectionToolbar hotkey from defaults", () => {
+    expect(mergeSettings({}).hotkeys.selectionToolbar).toBe("Alt+Q");
   });
 
   it("keeps stored providers when present", () => {

@@ -16,6 +16,7 @@ export interface AiProvider {
 export interface Hotkeys {
   quickAsk: string;
   showMain: string;
+  selectionToolbar: string;
 }
 
 export type QuickAskResetPolicy = "reopen" | "after5m" | "after10m" | "after20m" | "after30m" | "never";
