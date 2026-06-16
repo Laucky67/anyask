@@ -225,7 +225,13 @@ pub fn toggle(app: &AppHandle) {
         return;
     }
 
-    // 首次创建：根 webview = 本地壳（渲染顶栏），AI 站点作为子 webview 叠在顶栏下方
+    // 首次创建
+    create(app);
+}
+
+/// 首次创建快捷提问窗（本地壳 + 顶栏下方 AI 子 webview），定位后抬到最前。
+fn create(app: &AppHandle) {
+    let pinned = *app.state::<AppState>().quick_ask_pinned.lock().unwrap();
     let url = target_url(app);
     let Ok(parsed) = url.parse::<Url>() else {
         return;
@@ -245,7 +251,6 @@ pub fn toggle(app: &AppHandle) {
         return;
     }
 
-    // 取底层 Window 以挂子 webview（固定尺寸窗口，不用 auto_resize，避免覆盖顶栏）
     let Some(window) = app.get_window(LABEL) else {
         return;
     };
@@ -260,6 +265,23 @@ pub fn toggle(app: &AppHandle) {
     center_bottom(&window);
     raise(&window, pinned);
     set_focused(app, true);
+}
+
+/// 显示快捷提问窗（划词「打开 quick-ask」用）：缺则创建，存在则抬前并显示 AI 子 webview。
+/// 区别于 toggle：无条件显示，不会在可见时隐藏。
+pub fn show(app: &AppHandle) {
+    let pinned = *app.state::<AppState>().quick_ask_pinned.lock().unwrap();
+    match app.get_window(LABEL) {
+        Some(win) => {
+            cancel_pending_reset(app);
+            raise(&win, pinned);
+            set_focused(app, true);
+            if let Some(wv) = app.get_webview(AI_LABEL) {
+                let _ = wv.show();
+            }
+        }
+        None => create(app),
+    }
 }
 
 /// 设置 url：若 AI 子 webview 已存在则**先导航成功**，再写内存 override（供下次创建用）。
