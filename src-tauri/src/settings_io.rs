@@ -4,6 +4,7 @@ use tauri_plugin_store::StoreExt;
 
 const DEFAULT_QUICK_ASK: &str = "CommandOrControl+Space";
 const DEFAULT_SHOW_MAIN: &str = "CommandOrControl+Shift+Space";
+const DEFAULT_SELECTION_TOOLBAR: &str = "Alt+Q";
 const DEFAULT_QUICK_ASK_PROVIDER: &str = "chatgpt";
 
 fn default_quick_ask() -> String {
@@ -11,6 +12,9 @@ fn default_quick_ask() -> String {
 }
 fn default_show_main() -> String {
     DEFAULT_SHOW_MAIN.into()
+}
+fn default_selection_toolbar() -> String {
+    DEFAULT_SELECTION_TOOLBAR.into()
 }
 fn default_quick_ask_provider() -> String {
     DEFAULT_QUICK_ASK_PROVIDER.into()
@@ -28,6 +32,8 @@ pub struct Hotkeys {
     pub quick_ask: String,
     #[serde(rename = "showMain", default = "default_show_main")]
     pub show_main: String,
+    #[serde(rename = "selectionToolbar", default = "default_selection_toolbar")]
+    pub selection_toolbar: String,
 }
 
 impl Default for Hotkeys {
@@ -35,6 +41,7 @@ impl Default for Hotkeys {
         Self {
             quick_ask: default_quick_ask(),
             show_main: default_show_main(),
+            selection_toolbar: default_selection_toolbar(),
         }
     }
 }
