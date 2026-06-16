@@ -35,6 +35,7 @@ export async function repositionAiWebviews(bounds: Bounds): Promise<void> {
 export interface HotkeyRegistration {
   quickAsk: boolean;
   showMain: boolean;
+  selectionToolbar: boolean;
 }
 
 /** 通知 Rust 用最新设置重新注册全局快捷键，返回每个键的注册结果 */
@@ -117,4 +118,37 @@ export async function deleteProvider(id: string): Promise<void> {
 /** 刷新主窗口当前激活的 AI webview */
 export async function refreshActiveAiWebview(providerId: string): Promise<void> {
   await invoke("refresh_active_ai_webview", { providerId });
+}
+
+/** 划词捕获的待显示状态（与 Rust PendingSelection 对应） */
+export interface PendingSelection {
+  text: string;
+  x: number;
+  y: number;
+  show: boolean;
+}
+
+/** 定位（防溢出）并显示划词工具条；传前端测得的逻辑尺寸 */
+export async function placeAndShowSelectionToolbar(width: number, height: number): Promise<void> {
+  await invoke("place_and_show_selection_toolbar", { width, height });
+}
+
+/** 隐藏划词工具条 */
+export async function hideSelectionToolbar(): Promise<void> {
+  await invoke("hide_selection_toolbar");
+}
+
+/** 读取划词待显示状态（首帧兜底 / 事件后读 text） */
+export async function getPendingSelectionShow(): Promise<PendingSelection> {
+  return await invoke<PendingSelection>("get_pending_selection_show");
+}
+
+/** 复制：把捕获文本写入剪贴板 */
+export async function copySelection(): Promise<void> {
+  await invoke("copy_selection");
+}
+
+/** 打开快捷提问窗口（划词「解释/翻译/总结」用，无条件显示） */
+export async function showQuickAsk(): Promise<void> {
+  await invoke("show_quick_ask");
 }
