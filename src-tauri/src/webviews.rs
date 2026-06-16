@@ -132,7 +132,10 @@ pub async fn reposition_ai_webviews(app: AppHandle, bounds: Bounds) -> Result<()
     for (lbl, wv) in app.webviews() {
         if lbl.starts_with(PREFIX) {
             let _ = wv.set_position(LogicalPosition::new(bounds.x, bounds.y));
-            let _ = wv.set_size(LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)));
+            let _ = wv.set_size(LogicalSize::new(
+                bounds.width.max(1.0),
+                bounds.height.max(1.0),
+            ));
         }
     }
     Ok(())

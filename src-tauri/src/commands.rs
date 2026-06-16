@@ -113,7 +113,12 @@ pub fn add_provider(
     validate_provider_name(&name)?;
     validate_provider_url(&url)?;
     let _ = enabled; // 启用状态由前端写入 settings，这里仅作为参数占位
-    let id: String = uuid::Uuid::new_v4().simple().to_string().chars().take(8).collect();
+    let id: String = uuid::Uuid::new_v4()
+        .simple()
+        .to_string()
+        .chars()
+        .take(8)
+        .collect();
     let logo = apply_logo_action(&app, &id, logo_action, false)?;
     Ok((id, logo))
 }

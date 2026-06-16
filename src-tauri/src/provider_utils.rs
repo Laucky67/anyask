@@ -98,16 +98,28 @@ mod tests {
     fn name_validation() {
         assert_eq!(validate_provider_name(""), Err("nameRequired".into()));
         assert_eq!(validate_provider_name("   "), Err("nameRequired".into()));
-        assert_eq!(validate_provider_name(&"a".repeat(21)), Err("nameTooLong".into()));
-        assert_eq!(validate_provider_name("  ChatGPT  "), Ok("ChatGPT".to_string()));
-        assert_eq!(validate_provider_name(&"😀".repeat(20)), Ok("😀".repeat(20)));
+        assert_eq!(
+            validate_provider_name(&"a".repeat(21)),
+            Err("nameTooLong".into())
+        );
+        assert_eq!(
+            validate_provider_name("  ChatGPT  "),
+            Ok("ChatGPT".to_string())
+        );
+        assert_eq!(
+            validate_provider_name(&"😀".repeat(20)),
+            Ok("😀".repeat(20))
+        );
     }
 
     #[test]
     fn url_validation() {
         assert_eq!(validate_provider_url(""), Err("urlRequired".into()));
         assert_eq!(validate_provider_url("notaurl"), Err("urlInvalid".into()));
-        assert_eq!(validate_provider_url("ftp://x.com"), Err("urlInvalid".into()));
+        assert_eq!(
+            validate_provider_url("ftp://x.com"),
+            Err("urlInvalid".into())
+        );
         assert_eq!(
             validate_provider_url("  https://chatgpt.com  "),
             Ok("https://chatgpt.com".to_string())

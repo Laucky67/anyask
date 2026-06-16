@@ -6,11 +6,21 @@ const DEFAULT_QUICK_ASK: &str = "CommandOrControl+Space";
 const DEFAULT_SHOW_MAIN: &str = "CommandOrControl+Shift+Space";
 const DEFAULT_QUICK_ASK_PROVIDER: &str = "chatgpt";
 
-fn default_quick_ask() -> String { DEFAULT_QUICK_ASK.into() }
-fn default_show_main() -> String { DEFAULT_SHOW_MAIN.into() }
-fn default_quick_ask_provider() -> String { DEFAULT_QUICK_ASK_PROVIDER.into() }
-fn default_quick_ask_reset_policy() -> QuickAskResetPolicy { QuickAskResetPolicy::After5m }
-fn default_true() -> bool { true }
+fn default_quick_ask() -> String {
+    DEFAULT_QUICK_ASK.into()
+}
+fn default_show_main() -> String {
+    DEFAULT_SHOW_MAIN.into()
+}
+fn default_quick_ask_provider() -> String {
+    DEFAULT_QUICK_ASK_PROVIDER.into()
+}
+fn default_quick_ask_reset_policy() -> QuickAskResetPolicy {
+    QuickAskResetPolicy::After5m
+}
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Hotkeys {
@@ -22,7 +32,10 @@ pub struct Hotkeys {
 
 impl Default for Hotkeys {
     fn default() -> Self {
-        Self { quick_ask: default_quick_ask(), show_main: default_show_main() }
+        Self {
+            quick_ask: default_quick_ask(),
+            show_main: default_show_main(),
+        }
     }
 }
 
@@ -62,7 +75,10 @@ pub struct StoredSettings {
     pub hotkeys: Hotkeys,
     #[serde(rename = "quickAskProviderId", default = "default_quick_ask_provider")]
     pub quick_ask_provider_id: String,
-    #[serde(rename = "quickAskResetPolicy", default = "default_quick_ask_reset_policy")]
+    #[serde(
+        rename = "quickAskResetPolicy",
+        default = "default_quick_ask_reset_policy"
+    )]
     pub quick_ask_reset_policy: QuickAskResetPolicy,
     #[serde(default)]
     pub providers: Vec<ProviderLite>,
@@ -82,8 +98,12 @@ impl Default for StoredSettings {
 /// 读取设置；逐字段容错：`#[serde(default)]` 保证缺字段用默认而非整体失败，
 /// 仅在 store 不存在或 JSON 完全无法解析时才整体回退默认。
 pub fn read_settings(app: &AppHandle) -> StoredSettings {
-    let Ok(store) = app.store("settings.json") else { return StoredSettings::default() };
-    let Some(value) = store.get("settings") else { return StoredSettings::default() };
+    let Ok(store) = app.store("settings.json") else {
+        return StoredSettings::default();
+    };
+    let Some(value) = store.get("settings") else {
+        return StoredSettings::default();
+    };
     serde_json::from_value::<StoredSettings>(value).unwrap_or_default()
 }
 
@@ -110,7 +130,10 @@ mod tests {
     fn missing_quick_ask_reset_policy_defaults_to_after5m() {
         let settings = serde_json::from_value::<StoredSettings>(json!({})).unwrap();
 
-        assert_eq!(settings.quick_ask_reset_policy, QuickAskResetPolicy::After5m);
+        assert_eq!(
+            settings.quick_ask_reset_policy,
+            QuickAskResetPolicy::After5m
+        );
     }
 
     #[test]
@@ -135,7 +158,11 @@ mod tests {
     }
 
     fn lite(id: &str, enabled: bool) -> ProviderLite {
-        ProviderLite { id: id.into(), url: "https://x.com".into(), enabled }
+        ProviderLite {
+            id: id.into(),
+            url: "https://x.com".into(),
+            enabled,
+        }
     }
 
     #[test]
@@ -149,7 +176,9 @@ mod tests {
 
     #[test]
     fn provider_lite_enabled_defaults_true() {
-        let p = serde_json::from_value::<ProviderLite>(json!({ "id": "x", "url": "https://x.com" })).unwrap();
+        let p =
+            serde_json::from_value::<ProviderLite>(json!({ "id": "x", "url": "https://x.com" }))
+                .unwrap();
         assert!(p.enabled);
     }
 }

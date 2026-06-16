@@ -26,7 +26,9 @@ pub fn register_from_settings(app: &AppHandle) -> HotkeyRegistration {
 
 /// 解析并注册单个快捷键；解析失败或注册失败（如与系统/输入法冲突）返回 false
 fn register_one(app: &AppHandle, accelerator: &str, action: fn(&AppHandle)) -> bool {
-    let Ok(shortcut) = accelerator.parse::<Shortcut>() else { return false };
+    let Ok(shortcut) = accelerator.parse::<Shortcut>() else {
+        return false;
+    };
     app.global_shortcut()
         .on_shortcut(shortcut, move |app, _sc, event| {
             if event.state == ShortcutState::Pressed {
