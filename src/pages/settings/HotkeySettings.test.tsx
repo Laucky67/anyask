@@ -9,7 +9,7 @@ vi.mock("../../state/settingsStore", () => ({
   saveSettings: (s: unknown) => saveSettings(s),
   SETTINGS_CHANGED_EVENT: "settings:changed",
 }));
-const applyHotkeys = vi.fn().mockResolvedValue({ quickAsk: true, showMain: true });
+const applyHotkeys = vi.fn().mockResolvedValue({ quickAsk: true, showMain: true, selectionToolbar: true });
 vi.mock("../../lib/commands", () => ({ applyHotkeys: () => applyHotkeys() }));
 
 import { SettingsProvider } from "../../state/SettingsContext";
@@ -38,6 +38,12 @@ describe("HotkeySettings", () => {
     await waitFor(() => expect(screen.getByText("快捷提问")).toBeInTheDocument());
     expect(screen.getByText("Shift + Z")).toBeInTheDocument();
     expect(screen.getByText("Ctrl + Alt + Space")).toBeInTheDocument();
+  });
+
+  it("shows the selection-toolbar row with its default hotkey", async () => {
+    setup();
+    await waitFor(() => expect(screen.getByText("划词工具条")).toBeInTheDocument());
+    expect(screen.getByText("Alt + Q")).toBeInTheDocument();
   });
 
   it("captures a new hotkey on click + keydown", async () => {

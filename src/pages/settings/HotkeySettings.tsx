@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSettings } from "../../state/SettingsContext";
 import { useT } from "../../i18n";
-import { eventToAccelerator, isValidAccelerator, formatAccelerator, hasConflict } from "../../lib/hotkeys";
+import { eventToAccelerator, isValidAccelerator, formatAccelerator, hasAnyConflict } from "../../lib/hotkeys";
 import { applyHotkeys, type HotkeyRegistration } from "../../lib/commands";
 import type { Hotkeys } from "../../state/types";
 
@@ -10,6 +10,7 @@ type HotkeyName = keyof Hotkeys;
 const ROWS: { name: HotkeyName; labelKey: string }[] = [
   { name: "quickAsk", labelKey: "hotkeys.quickAsk" },
   { name: "showMain", labelKey: "hotkeys.showMain" },
+  { name: "selectionToolbar", labelKey: "hotkeys.selectionToolbar" },
 ];
 
 export function HotkeySettings() {
@@ -46,7 +47,11 @@ export function HotkeySettings() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [recording, settings.hotkeys, updateSettings]);
 
-  const conflict = hasConflict(settings.hotkeys.quickAsk, settings.hotkeys.showMain);
+  const conflict = hasAnyConflict([
+    settings.hotkeys.quickAsk,
+    settings.hotkeys.showMain,
+    settings.hotkeys.selectionToolbar,
+  ]);
 
   return (
     <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12, maxWidth: 640 }}>
