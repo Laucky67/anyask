@@ -230,6 +230,8 @@ pub fn toggle(app: &AppHandle) {
     let Ok(parsed) = url.parse::<Url>() else {
         return;
     };
+    // visible(false)：先隐身创建，待 center_bottom 定位后再由 raise() 首次 show()，
+    // 否则窗口会先以默认位置（屏幕左上）露一帧再跳到中下部，形成虚影。
     let built = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
         .title("快捷提问")
         .inner_size(WIDTH, HEIGHT)
@@ -237,6 +239,7 @@ pub fn toggle(app: &AppHandle) {
         .always_on_top(false)
         .skip_taskbar(true)
         .resizable(false)
+        .visible(false)
         .build();
     if built.is_err() {
         return;
