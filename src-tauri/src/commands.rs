@@ -8,6 +8,7 @@ use crate::provider_utils::{
     LogoAction, LogoResult,
 };
 use crate::quick_ask;
+use crate::selection_toolbar;
 use crate::shortcuts;
 use crate::tray;
 
@@ -49,6 +50,35 @@ pub fn set_quick_ask_pinned(app: AppHandle, pinned: bool) -> Result<(), String> 
 #[tauri::command]
 pub fn quick_ask_new_chat(app: AppHandle) -> Result<(), String> {
     quick_ask::new_chat(&app)
+}
+
+#[tauri::command]
+pub fn place_and_show_selection_toolbar(
+    app: AppHandle,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    selection_toolbar::place_and_show(&app, width, height)
+}
+
+#[tauri::command]
+pub fn hide_selection_toolbar(app: AppHandle) -> Result<(), String> {
+    selection_toolbar::hide(&app)
+}
+
+#[tauri::command]
+pub fn get_pending_selection_show(app: AppHandle) -> crate::state::PendingSelection {
+    selection_toolbar::get_pending(&app)
+}
+
+#[tauri::command]
+pub fn copy_selection(app: AppHandle) -> Result<(), String> {
+    selection_toolbar::copy_selection(&app)
+}
+
+#[tauri::command]
+pub fn show_quick_ask(app: AppHandle) {
+    quick_ask::show(&app);
 }
 
 /// 确保 logo 目录存在并返回它
