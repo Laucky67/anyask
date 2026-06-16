@@ -2,6 +2,7 @@
 mod commands;
 mod provider_utils;
 mod quick_ask;
+mod selection_toolbar;
 mod settings_io;
 mod shortcuts;
 mod state;
