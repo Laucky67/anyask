@@ -1,3 +1,18 @@
+use std::time::Duration;
+
+use mouse_position::mouse_position::Mouse;
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder,
+};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+
+use crate::state::AppState;
+
+const LABEL: &str = "selection-toolbar";
+const SHOW_EVENT: &str = "selection-toolbar:show";
+const INIT_W: f64 = 320.0;
+const INIT_H: f64 = 44.0;
+
 /// 显示器矩形（物理像素），用于纯函数钳制。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct MonitorRect {
@@ -15,6 +30,146 @@ fn clamp_to_monitor(anchor_x: i32, anchor_y: i32, w: i32, h: i32, mon: MonitorRe
     let x = anchor_x.clamp(mon.x, max_x);
     let y = anchor_y.clamp(mon.y, max_y);
     (x, y)
+}
+
+/// 全局快捷键入口（在按键 Released 时调用）：捕获选中文本与鼠标坐标，弹出工具条。
+pub fn trigger(app: &AppHandle) {
+    // 让按键状态沉降：划词热键含修饰键，get-selected-text 在 Windows 合成 Ctrl+C 取值，
+    // 修饰键仍按住时取值会冲突。Released + settle 是 spike 验证过的可靠时机。
+    std::thread::sleep(Duration::from_millis(20));
+
+    let text = capture_selected_text();
+
+    let (x, y) = match Mouse::get_mouse_position() {
+        Mouse::Position { x, y } => (x, y),
+        Mouse::Error => {
+            println!("[selection] mouse position unavailable, abort");
+            return;
+        }
+    };
+    println!("[selection] captured: {text:?} @ ({x},{y})");
+
+    {
+        let state = app.state::<AppState>();
+        let mut pending = state.pending_selection.lock().unwrap();
+        pending.text = text;
+        pending.x = x;
+        pending.y = y;
+        pending.show = true;
+    }
+
+    if let Err(e) = ensure_window(app) {
+        eprintln!("[selection] ensure_window failed: {e}");
+        return;
+    }
+    // 窗口已存在：事件唤醒前端读 pending；首次创建：前端挂载走 get_pending 兜底
+    let _ = app.emit_to(LABEL, SHOW_EVENT, ());
+}
+
+/// 取选中文本，最多 3 次重试（镜像 spike）。全部失败返回空串。
+fn capture_selected_text() -> String {
+    for attempt in 1..=3 {
+        match get_selected_text::get_selected_text() {
+            Ok(text) => return text,
+            Err(error) => {
+                println!("[selection] get-selected-text error attempt {attempt}: {error:?}");
+                std::thread::sleep(Duration::from_millis(120 * attempt));
+            }
+        }
+    }
+    String::new()
+}
+
+/// 确保工具条窗口存在；缺则隐身创建（透明无边框、置顶、跳过任务栏）。
+fn ensure_window(app: &AppHandle) -> Result<(), String> {
+    if app.get_window(LABEL).is_some() {
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
+        .title("划词工具条")
+        .inner_size(INIT_W, INIT_H)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .visible(false)
+        .focused(false)
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// 定位（防溢出）并显示。仅接收前端测得的逻辑尺寸；锚点从 pending 读。
+pub fn place_and_show(app: &AppHandle, width: f64, height: f64) -> Result<(), String> {
+    let win = app.get_window(LABEL).ok_or("toolbar window not found")?;
+    let (anchor_x, anchor_y) = {
+        let state = app.state::<AppState>();
+        let pending = state.pending_selection.lock().unwrap();
+        (pending.x, pending.y)
+    };
+
+    let monitor = monitor_for_point(&win, anchor_x, anchor_y)
+        .or_else(|| win.primary_monitor().ok().flatten())
+        .ok_or("no monitor")?;
+    let scale = monitor.scale_factor();
+    let pos = monitor.position();
+    let size = monitor.size();
+    let mon = MonitorRect {
+        x: pos.x,
+        y: pos.y,
+        w: size.width as i32,
+        h: size.height as i32,
+    };
+    let phys_w = ((width * scale).round() as i32).max(1);
+    let phys_h = ((height * scale).round() as i32).max(1);
+    let (x, y) = clamp_to_monitor(anchor_x, anchor_y, phys_w, phys_h, mon);
+
+    win.set_size(LogicalSize::new(width.max(1.0), height.max(1.0)))
+        .map_err(|e| e.to_string())?;
+    win.set_position(PhysicalPosition::new(x, y))
+        .map_err(|e| e.to_string())?;
+    win.show().map_err(|e| e.to_string())?;
+    let _ = win.set_focus();
+
+    // 唯一汇聚点：消费 show（保留 text/x/y 供按钮动作与下次定位）
+    app.state::<AppState>().pending_selection.lock().unwrap().show = false;
+    Ok(())
+}
+
+/// 找到包含指定物理坐标点的显示器。
+fn monitor_for_point(win: &tauri::Window, x: i32, y: i32) -> Option<tauri::Monitor> {
+    let monitors = win.available_monitors().ok()?;
+    monitors.into_iter().find(|m| {
+        let p = m.position();
+        let s = m.size();
+        x >= p.x && x < p.x + s.width as i32 && y >= p.y && y < p.y + s.height as i32
+    })
+}
+
+/// 隐藏工具条（失焦 / 点按钮后调用，不销毁，供复用）。
+pub fn hide(app: &AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_window(LABEL) {
+        win.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// 把捕获到的文本写入剪贴板（复制按钮）。
+pub fn copy_selection(app: &AppHandle) -> Result<(), String> {
+    let text = app
+        .state::<AppState>()
+        .pending_selection
+        .lock()
+        .unwrap()
+        .text
+        .clone();
+    app.clipboard().write_text(text).map_err(|e| e.to_string())
+}
+
+/// 读取待显示状态（首帧兜底 / 事件后读 text）。只读不清。
+pub fn get_pending(app: &AppHandle) -> crate::state::PendingSelection {
+    app.state::<AppState>().pending_selection.lock().unwrap().clone()
 }
 
 #[cfg(test)]
