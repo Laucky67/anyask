@@ -30,4 +30,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
+get-selected-text = "0.1.6"
+mouse_position = "0.1.4"
+tauri-plugin-clipboard-manager = "2"
 
