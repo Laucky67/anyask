@@ -51,4 +51,9 @@ export const zhCN: Record<string, string> = {
   "quickAsk.pin": "置顶",
   "quickAsk.newChat": "新对话",
   "quickAsk.selectAi": "选择 AI",
+  "hotkeys.selectionToolbar": "划词工具条",
+  "selection.explain": "解释",
+  "selection.translate": "翻译",
+  "selection.summarize": "总结",
+  "selection.copy": "复制",
 };
