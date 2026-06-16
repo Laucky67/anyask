@@ -21,4 +21,16 @@ pub struct AppState {
     pub webview_sync: tauri::async_runtime::Mutex<()>,
     /// 记录每个 AI webview 创建时所用的 url，用于检测 url 变更后重建 webview
     pub ai_webview_urls: Mutex<HashMap<String, String>>,
+    /// 划词工具条待显示状态：trigger 写入，前端 get_pending / place_and_show 读消费。
+    pub pending_selection: Mutex<PendingSelection>,
+}
+
+/// 划词捕获的待显示状态（运行时，不持久化）。
+/// `x`/`y` 为鼠标物理像素锚点；`show` 由 trigger 置真、由 place_and_show 消费。
+#[derive(Debug, Default, Clone, serde::Serialize)]
+pub struct PendingSelection {
+    pub text: String,
+    pub x: i32,
+    pub y: i32,
+    pub show: bool,
 }
