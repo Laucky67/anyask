@@ -20,8 +20,20 @@ function ThemedToolbar() {
 /** 划词工具条窗口的本地壳：透明窗口只显示药丸本体 */
 export function SelectionToolbarShell() {
   useEffect(() => {
-    // 覆盖 global.css 的 body 背景，让透明窗口只露出药丸
-    document.body.style.background = "transparent";
+    // 透明窗口：html/body/#root 全部置透明并禁滚动条，覆盖 global.css 的
+    // `body { background: var(--bg) }` 与 `height: 100%`，使窗口只露出药丸本体。
+    const html = document.documentElement;
+    const body = document.body;
+    const root = document.getElementById("root");
+    html.style.background = "transparent";
+    html.style.overflow = "hidden";
+    body.style.background = "transparent";
+    body.style.overflow = "hidden";
+    if (root) {
+      root.style.background = "transparent";
+      root.style.height = "auto";
+      root.style.overflow = "hidden";
+    }
   }, []);
   return (
     <I18nProvider>

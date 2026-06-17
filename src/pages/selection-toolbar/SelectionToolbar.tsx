@@ -118,33 +118,32 @@ export function SelectionToolbar() {
   }, []);
 
   return (
-    <div style={{ display: "inline-flex", padding: 4 /* 阴影留白 */ }}>
-      <div
-        ref={outerRef}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 2,
-          height: 36,
-          padding: "0 4px",
-          background: "var(--bg)",
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {actions.map((a) => {
-          const Icon = ICON_REGISTRY[a.icon];
-          const label = a.labelKey ? t(a.labelKey) : a.label ?? "";
-          return (
-            <ToolbarButton key={a.id} label={label} onClick={() => runAction(a)}>
-              {Icon ? <Icon size={16} /> : null}
-              <span style={{ fontSize: 13 }}>{label}</span>
-            </ToolbarButton>
-          );
-        })}
-      </div>
+    // 窗口尺寸 = 本药丸尺寸（place_and_show 按实测 rect 设窗），不留任何透明边距，
+    // 故不加外层 padding，也不用 boxShadow（会被窗口边界裁掉）。圆角外的四角为透明窗体。
+    <div
+      ref={outerRef}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 2,
+        height: 36,
+        padding: "0 4px",
+        background: "var(--bg)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {actions.map((a) => {
+        const Icon = ICON_REGISTRY[a.icon];
+        const label = a.labelKey ? t(a.labelKey) : a.label ?? "";
+        return (
+          <ToolbarButton key={a.id} label={label} onClick={() => runAction(a)}>
+            {Icon ? <Icon size={16} /> : null}
+            <span style={{ fontSize: 13 }}>{label}</span>
+          </ToolbarButton>
+        );
+      })}
     </div>
   );
 }
