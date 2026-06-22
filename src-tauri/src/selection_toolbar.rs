@@ -90,6 +90,9 @@ fn ensure_window(app: &AppHandle) -> Result<(), String> {
         .inner_size(INIT_W, INIT_H)
         .decorations(false)
         .transparent(true)
+        // 关掉窗口级 DWM 投影：透明窗口会按整窗圆角矩形投出一圈阴影，显示为药丸外那圈
+        // 多余的淡色轮廓。阴影改由药丸自身的 CSS boxShadow 提供。
+        .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
@@ -100,16 +103,16 @@ fn ensure_window(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// 定位（防溢出）并显示。仅接收前端测得的逻辑尺寸；锚点从 pending 读。
-pub fn place_and_show(app: &AppHandle, width: f64, height: f64) -> Result<(), String> {
-    let win = app.get_window(LABEL).ok_or("toolbar window not found")?;
-    let (anchor_x, anchor_y) = {
-        let state = app.state::<AppState>();
-        let pending = state.pending_selection.lock().unwrap();
-        (pending.x, pending.y)
-    };
-
-    let monitor = monitor_for_point(&win, anchor_x, anchor_y)
+/// 按锚点 + 尺寸（逻辑像素）把工具条窗口定位到不溢出显示器的位置（不 show）。
+/// trigger 用近似 INIT 尺寸抢焦点，place_and_show 用前端实测尺寸精修，二者共用。
+fn position_window(
+    win: &tauri::Window,
+    anchor_x: i32,
+    anchor_y: i32,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    let monitor = monitor_for_point(win, anchor_x, anchor_y)
         .or_else(|| win.primary_monitor().ok().flatten())
         .ok_or("no monitor")?;
     let scale = monitor.scale_factor();
@@ -124,11 +127,22 @@ pub fn place_and_show(app: &AppHandle, width: f64, height: f64) -> Result<(), St
     let phys_w = ((width * scale).round() as i32).max(1);
     let phys_h = ((height * scale).round() as i32).max(1);
     let (x, y) = clamp_to_monitor(anchor_x, anchor_y, phys_w, phys_h, mon);
-
     win.set_size(LogicalSize::new(width.max(1.0), height.max(1.0)))
         .map_err(|e| e.to_string())?;
     win.set_position(PhysicalPosition::new(x, y))
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 定位（防溢出）并显示。仅接收前端测得的逻辑尺寸；锚点从 pending 读。
+pub fn place_and_show(app: &AppHandle, width: f64, height: f64) -> Result<(), String> {
+    let win = app.get_window(LABEL).ok_or("toolbar window not found")?;
+    let (anchor_x, anchor_y) = {
+        let state = app.state::<AppState>();
+        let pending = state.pending_selection.lock().unwrap();
+        (pending.x, pending.y)
+    };
+    position_window(&win, anchor_x, anchor_y, width, height)?;
     win.show().map_err(|e| e.to_string())?;
     let _ = win.set_focus();
 
