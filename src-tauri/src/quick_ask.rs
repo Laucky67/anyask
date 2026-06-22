@@ -284,6 +284,16 @@ pub fn show(app: &AppHandle) {
     }
 }
 
+/// 从 WebView IPC 入口触发显示时，不能在当前 IPC 调用栈里直接创建另一个 WebView。
+/// WebView 创建会通过运行时通道同步到事件循环；如果当前 WebView 的 IPC 仍未返回，
+/// Windows/WebView2 上容易形成等待环，表现为划词按钮点击后整应用卡死。
+pub fn show_deferred(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(1)).await;
+        show(&app);
+    });
+}
+
 /// 设置 url：若 AI 子 webview 已存在则**先导航成功**，再写内存 override（供下次创建用）。
 /// 反序避免「导航失败但默认 URL 已变、webview 仍停旧页」。
 pub fn set_url(app: &AppHandle, url: String) -> Result<(), String> {

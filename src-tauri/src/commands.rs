@@ -78,7 +78,7 @@ pub fn copy_selection(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn show_quick_ask(app: AppHandle) {
-    quick_ask::show(&app);
+    quick_ask::show_deferred(app);
 }
 
 /// 确保 logo 目录存在并返回它
