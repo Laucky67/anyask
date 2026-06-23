@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hotkeys: { quickAsk: "Shift+Z", showMain: "CommandOrControl+Alt+Space", selectionToolbar: "Alt+Q" },
   quickAskProviderId: "chatgpt",
   quickAskResetPolicy: "after5m",
+  selectionAutoPopup: true,
 };
 
 /** 深拷贝默认值，避免外部修改污染常量 */
@@ -37,5 +38,6 @@ export function mergeSettings(stored: Partial<Settings> | null | undefined): Set
     },
     quickAskProviderId: stored.quickAskProviderId ?? base.quickAskProviderId,
     quickAskResetPolicy: stored.quickAskResetPolicy ?? base.quickAskResetPolicy,
+    selectionAutoPopup: stored.selectionAutoPopup ?? base.selectionAutoPopup,
   };
 }

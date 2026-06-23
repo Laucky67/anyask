@@ -29,6 +29,7 @@ export interface Settings {
   hotkeys: Hotkeys;
   quickAskProviderId: string;
   quickAskResetPolicy: QuickAskResetPolicy;
+  selectionAutoPopup: boolean;
 }
 
 export type LogoAction =

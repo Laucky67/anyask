@@ -152,3 +152,8 @@ export async function copySelection(): Promise<void> {
 export async function showQuickAsk(): Promise<void> {
   await invoke("show_quick_ask");
 }
+
+/** 设置划词自动弹出开关(运行态);与 updateSettings 并行调用 */
+export async function setSelectionAutoPopup(enabled: boolean): Promise<void> {
+  await invoke("set_selection_auto_popup", { enabled });
+}
