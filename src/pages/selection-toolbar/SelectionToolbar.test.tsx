@@ -17,9 +17,6 @@ vi.mock("../../lib/commands", () => ({
 vi.mock("@tauri-apps/api/event", () => ({
   listen: () => Promise.resolve(() => {}),
 }));
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ onFocusChanged: () => Promise.resolve(() => {}) }),
-}));
 
 import { I18nProvider } from "../../i18n";
 import { SelectionToolbar } from "./SelectionToolbar";

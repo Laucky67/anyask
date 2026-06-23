@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useT } from "../../i18n";
 import {
   BUILTIN_SELECTION_ACTIONS,
@@ -92,19 +91,6 @@ export function SelectionToolbar() {
     });
     return () => unlisten?.();
   }, [requestShow]);
-
-  // 失焦注销：点击工具条以外区域 → 窗口失焦 → 隐藏
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    void getCurrentWindow()
-      .onFocusChanged(({ payload: focused }) => {
-        if (!focused) void hideSelectionToolbar();
-      })
-      .then((un) => {
-        unlisten = un;
-      });
-    return () => unlisten?.();
-  }, []);
 
   const runAction = useCallback((action: SelectionAction) => {
     if (action.kind === "copy") {
