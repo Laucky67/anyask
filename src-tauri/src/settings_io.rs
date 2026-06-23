@@ -89,6 +89,8 @@ pub struct StoredSettings {
     pub quick_ask_reset_policy: QuickAskResetPolicy,
     #[serde(default)]
     pub providers: Vec<ProviderLite>,
+    #[serde(rename = "selectionAutoPopup", default = "default_true")]
+    pub selection_auto_popup: bool,
 }
 
 impl Default for StoredSettings {
@@ -98,6 +100,7 @@ impl Default for StoredSettings {
             quick_ask_provider_id: default_quick_ask_provider(),
             quick_ask_reset_policy: default_quick_ask_reset_policy(),
             providers: Vec::new(),
+            selection_auto_popup: true,
         }
     }
 }
@@ -141,6 +144,12 @@ mod tests {
             settings.quick_ask_reset_policy,
             QuickAskResetPolicy::After5m
         );
+    }
+
+    #[test]
+    fn missing_selection_auto_popup_defaults_to_true() {
+        let settings = serde_json::from_value::<StoredSettings>(json!({})).unwrap();
+        assert!(settings.selection_auto_popup);
     }
 
     #[test]
