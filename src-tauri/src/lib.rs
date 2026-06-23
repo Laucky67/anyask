@@ -23,6 +23,13 @@ pub fn run() {
         .setup(|app| {
             tray::build_tray(app.handle())?;
             shortcuts::register_from_settings(app.handle());
+            // 划词自动弹出开关:先读设置写入运行态原子,再启动全局鼠标钩子,
+            // 保证处理线程不会读到 AtomicBool 默认的 false(见 state.rs 注释)。
+            let enabled = settings_io::read_settings(app.handle()).selection_auto_popup;
+            app.state::<state::AppState>()
+                .selection_autopopup_enabled
+                .store(enabled, std::sync::atomic::Ordering::SeqCst);
+            mouse_hook::start(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -56,6 +63,7 @@ pub fn run() {
             commands::hide_selection_toolbar,
             commands::get_pending_selection_show,
             commands::copy_selection,
+            commands::set_selection_auto_popup,
             commands::show_quick_ask,
             commands::add_provider,
             commands::validate_and_save_provider,

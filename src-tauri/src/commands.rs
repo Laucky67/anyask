@@ -77,6 +77,13 @@ pub fn copy_selection(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn set_selection_auto_popup(app: AppHandle, enabled: bool) {
+    app.state::<crate::state::AppState>()
+        .selection_autopopup_enabled
+        .store(enabled, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[tauri::command]
 pub fn show_quick_ask(app: AppHandle) {
     quick_ask::show_deferred(app);
 }
