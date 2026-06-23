@@ -103,4 +103,27 @@ describe("AiConfigSettings", () => {
       expect(last.providers.some((p: any) => p.id === "claude")).toBe(false);
     });
   });
+
+  it("keeps the built-in image logo when editing & saving a default provider", async () => {
+    // 模拟后端 keep 返回一个指向不存在文件的路径(真实回归场景)
+    saveProvider.mockResolvedValue({ type: "image", src: "asset://localhost/provider-logos/chatgpt.png?bad" });
+    setup();
+    await waitFor(() => screen.getByText("ChatGPT"));
+    await userEvent.click(screen.getByRole("button", { name: "ChatGPT" }));
+    const urlInput = await screen.findByLabelText("官网地址");
+    await userEvent.clear(urlInput);
+    await userEvent.type(urlInput, "https://chat.openai.com");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    // 应以 keep 操作保存
+    expect(saveProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "chatgpt", logoAction: { type: "keep" } })
+    );
+    // 持久化后的 logo 应沿用内置图,而非后端返回的坏路径
+    await waitFor(() => {
+      const last = saveSettings.mock.calls.at(-1)![0];
+      const chatgpt = last.providers.find((p: any) => p.id === "chatgpt");
+      expect(chatgpt.logo).toEqual({ type: "image", src: "/providers/chatgpt.png" });
+    });
+  });
 });

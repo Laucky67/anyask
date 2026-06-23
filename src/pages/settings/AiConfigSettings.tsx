@@ -68,7 +68,9 @@ export function AiConfigSettings() {
         const next: AiProvider = { id, name, url, enabled: draft.enabled, logo };
         await updateSettings({ providers: [...settings.providers, next] });
       } else {
-        const logo = await saveProvider({ id: draft.id, name, url, enabled: draft.enabled, logoAction: action });
+        const resultLogo = await saveProvider({ id: draft.id, name, url, enabled: draft.enabled, logoAction: action });
+        // keep:内置图标与未改动的上传图都不在后端按 id 拼出的磁盘路径上,沿用前端已有 logo 防止裂图
+        const logo = action.type === "keep" ? draft.logo : resultLogo;
         const updated: AiProvider = { id: draft.id, name, url, enabled: draft.enabled, logo };
         const nextProviders = settings.providers.map((p) => (p.id === draft.id ? updated : p));
         const patch: Partial<Settings> = { providers: nextProviders };
