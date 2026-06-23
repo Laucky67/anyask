@@ -7,6 +7,13 @@ describe("DEFAULT_SETTINGS", () => {
     expect(DEFAULT_PROVIDERS.every((p) => p.enabled)).toBe(true);
   });
 
+  it("uses image logos for the 3 built-in providers", () => {
+    const byId = Object.fromEntries(DEFAULT_PROVIDERS.map((p) => [p.id, p.logo]));
+    expect(byId.chatgpt).toEqual({ type: "image", src: "/providers/chatgpt.png" });
+    expect(byId.claude).toEqual({ type: "image", src: "/providers/claude.png" });
+    expect(byId.aistudio).toEqual({ type: "image", src: "/providers/aistudio.png" });
+  });
+
   it("defaults keepStateOnSwitch to true and theme to system", () => {
     expect(DEFAULT_SETTINGS.keepStateOnSwitch).toBe(true);
     expect(DEFAULT_SETTINGS.theme).toBe("system");

@@ -1,9 +1,9 @@
 import type { AiProvider, Settings } from "./types";
 
 export const DEFAULT_PROVIDERS: AiProvider[] = [
-  { id: "chatgpt", name: "ChatGPT", url: "https://chatgpt.com", enabled: true, logo: { type: "letter", color: "#10A37F" } },
-  { id: "claude", name: "Claude", url: "https://claude.ai", enabled: true, logo: { type: "letter", color: "#D97757" } },
-  { id: "aistudio", name: "Google AI Studio", url: "https://aistudio.google.com", enabled: true, logo: { type: "letter", color: "#4285F4" } },
+  { id: "chatgpt", name: "ChatGPT", url: "https://chatgpt.com", enabled: true, logo: { type: "image", src: "/providers/chatgpt.png" } },
+  { id: "claude", name: "Claude", url: "https://claude.ai", enabled: true, logo: { type: "image", src: "/providers/claude.png" } },
+  { id: "aistudio", name: "Google AI Studio", url: "https://aistudio.google.com", enabled: true, logo: { type: "image", src: "/providers/aistudio.png" } },
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
