@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use mouse_position::mouse_position::Mouse;
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder,
 };
@@ -32,29 +31,33 @@ fn clamp_to_monitor(anchor_x: i32, anchor_y: i32, w: i32, h: i32, mon: MonitorRe
     (x, y)
 }
 
-/// 全局快捷键入口（在按键 Released 时调用）：捕获选中文本与鼠标坐标，弹出工具条。
+/// 全局快捷键入口(按键 Released 时调用):用缓存光标坐标作锚点,捕获选区并弹工具条。
 pub fn trigger(app: &AppHandle) {
-    // 让按键状态沉降：划词热键含修饰键，get-selected-text 在 Windows 合成 Ctrl+C 取值，
+    let (x, y) = crate::mouse_hook::last_position().unwrap_or_else(|| fallback_anchor(app));
+    trigger_at(app, x, y, false); // 热键路径:空选也弹,维持原行为
+}
+
+/// 在指定物理锚点弹工具条:捕获选中文本 + 写 pending + 确保窗口 + 通知前端。
+/// 快捷键路径用缓存坐标;划词路径用左键抬起坐标(锚点精确,不受延迟期间移动影响)。
+/// `require_text=true`(划词路径):取词为空(trim 后)直接返回不弹,挡住拖滚动条/窗口等
+/// "非选字拖动";`false`(热键路径):始终弹。
+pub fn trigger_at(app: &AppHandle, anchor_x: i32, anchor_y: i32, require_text: bool) {
+    // 让按键状态沉降:划词热键含修饰键,get-selected-text 在 Windows 合成 Ctrl+C 取值,
     // 修饰键仍按住时取值会冲突。Released + settle 是 spike 验证过的可靠时机。
     std::thread::sleep(Duration::from_millis(20));
 
     let text = capture_selected_text();
-
-    let (x, y) = match Mouse::get_mouse_position() {
-        Mouse::Position { x, y } => (x, y),
-        Mouse::Error => {
-            println!("[selection] mouse position unavailable, abort");
-            return;
-        }
-    };
-    println!("[selection] captured: {text:?} @ ({x},{y})");
+    println!("[selection] captured: {text:?} @ ({anchor_x},{anchor_y})");
+    if require_text && text.trim().is_empty() {
+        return; // 划词路径没真正选到字 → 不弹
+    }
 
     {
         let state = app.state::<AppState>();
         let mut pending = state.pending_selection.lock().unwrap();
         pending.text = text;
-        pending.x = x;
-        pending.y = y;
+        pending.x = anchor_x;
+        pending.y = anchor_y;
         pending.show = true;
     }
 
@@ -62,8 +65,19 @@ pub fn trigger(app: &AppHandle) {
         eprintln!("[selection] ensure_window failed: {e}");
         return;
     }
-    // 窗口已存在：事件唤醒前端读 pending；首次创建：前端挂载走 get_pending 兜底
+    // 窗口已存在:事件唤醒前端读 pending;首次创建:前端挂载走 get_pending 兜底
     let _ = app.emit_to(LABEL, SHOW_EVENT, ());
+}
+
+/// 缓存坐标不可用(冷启动,首个 MouseMove 之前)时的兜底锚点:主屏左上。
+fn fallback_anchor(app: &AppHandle) -> (i32, i32) {
+    if let Some(win) = app.get_window("main") {
+        if let Ok(Some(m)) = win.primary_monitor() {
+            let p = m.position();
+            return (p.x, p.y);
+        }
+    }
+    (0, 0)
 }
 
 /// 取选中文本，最多 3 次重试（镜像 spike）。全部失败返回空串。
