@@ -11,21 +11,27 @@ const providers: AiProvider[] = [
 
 describe("Sidebar", () => {
   it("renders one button per provider plus settings", () => {
-    render(<Sidebar providers={providers} activeId="chatgpt" settingsActive={false} onSelect={() => {}} onOpenSettings={() => {}} />);
+    render(<Sidebar providers={providers} activeId="chatgpt" settingsActive={false} onSelect={() => {}} onOpenSettings={() => {}} onRefresh={() => {}} />);
     expect(screen.getByRole("button", { name: "ChatGPT" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Claude" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "设置" })).toBeInTheDocument();
   });
   it("calls onSelect with provider id", async () => {
     const onSelect = vi.fn();
-    render(<Sidebar providers={providers} activeId="chatgpt" settingsActive={false} onSelect={onSelect} onOpenSettings={() => {}} />);
+    render(<Sidebar providers={providers} activeId="chatgpt" settingsActive={false} onSelect={onSelect} onOpenSettings={() => {}} onRefresh={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "Claude" }));
     expect(onSelect).toHaveBeenCalledWith("claude");
   });
   it("calls onOpenSettings", async () => {
     const onOpenSettings = vi.fn();
-    render(<Sidebar providers={providers} activeId="chatgpt" settingsActive={false} onSelect={() => {}} onOpenSettings={onOpenSettings} />);
+    render(<Sidebar providers={providers} activeId="chatgpt" settingsActive={false} onSelect={() => {}} onOpenSettings={onOpenSettings} onRefresh={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "设置" }));
     expect(onOpenSettings).toHaveBeenCalled();
+  });
+  it("calls onRefresh when refresh button clicked", async () => {
+    const onRefresh = vi.fn();
+    render(<Sidebar providers={providers} activeId="chatgpt" settingsActive={false} onSelect={() => {}} onOpenSettings={() => {}} onRefresh={onRefresh} />);
+    await userEvent.click(screen.getByRole("button", { name: "刷新" }));
+    expect(onRefresh).toHaveBeenCalled();
   });
 });

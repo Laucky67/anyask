@@ -29,4 +29,14 @@ describe("ProviderCard", () => {
     render(<ProviderCard name="Custom" logo={imgLogo} />);
     expect(screen.getByRole("img", { name: "Custom" })).toBeInTheDocument();
   });
+
+  it("renders no chevron by default", () => {
+    const { container } = render(<ProviderCard name="ChatGPT" logo={letterLogo} />);
+    expect(container.querySelector("svg")).not.toBeInTheDocument();
+  });
+
+  it("renders a chevron when arrow is set", () => {
+    const { container } = render(<ProviderCard name="ChatGPT" logo={letterLogo} arrow="down" />);
+    expect(container.querySelector("svg")).toBeInTheDocument();
+  });
 });

@@ -18,13 +18,19 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["unstable", "tray-icon"] }
+tauri = { version = "2", features = ["unstable", "tray-icon", "protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
 tauri-plugin-global-shortcut = "2"
+tokio = { version = "1", features = ["time"] }
 # 前置锁定 time < 0.3.48：0.3.48 经 cookie 0.18.1 触发 Tauri 依赖树 trait coherence 冲突。
 # 这是首次会触发 Rust 构建的任务，提前加避免后续 cargo check/tauri dev 中途爆（MVP 已踩坑）。
 time = "=0.3.47"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+get-selected-text = "0.1.6"
+rdev = "0.5.3"
+tauri-plugin-clipboard-manager = "2"
 

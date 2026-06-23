@@ -70,6 +70,25 @@ export function QuickAskBar() {
   const enabled = settings.providers.filter((p) => p.enabled);
   const current = enabled.find((p) => p.id === settings.quickAskProviderId) ?? enabled[0];
 
+  // 跟踪上次导航到的 url，用于区分「首次挂载」与「同一 provider 的 url 真正变更」
+  const lastUrlRef = useRef<string | undefined>(undefined);
+
+  // ① 默认 provider 被停用/删除（id 变化）→ 切到第一个启用的并持久化；
+  // ② 同一 provider 的 url 变更 → 重新导航（spec 7.2）。
+  // 首次挂载只记录 url、不导航：初始 url 由 Rust 创建 webview 时已设置，避免冗余 reload。
+  useEffect(() => {
+    const enabledList = settings.providers.filter((p) => p.enabled);
+    const next = enabledList.find((p) => p.id === settings.quickAskProviderId) ?? enabledList[0];
+    if (!next) return;
+    if (next.id !== settings.quickAskProviderId) {
+      void updateSettings({ quickAskProviderId: next.id });
+      void setQuickAskProvider(next.url);
+    } else if (lastUrlRef.current !== undefined && lastUrlRef.current !== next.url) {
+      void setQuickAskProvider(next.url);
+    }
+    lastUrlRef.current = next.url;
+  }, [settings.providers, settings.quickAskProviderId, updateSettings]);
+
   const togglePin = async () => {
     const next = !pinned;
     try {

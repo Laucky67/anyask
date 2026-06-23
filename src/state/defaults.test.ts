@@ -15,6 +15,15 @@ describe("DEFAULT_SETTINGS", () => {
   it("default hotkeys", () => {
     expect(DEFAULT_SETTINGS.hotkeys.quickAsk).toBe("Shift+Z");
     expect(DEFAULT_SETTINGS.hotkeys.showMain).toBe("CommandOrControl+Alt+Space");
+    expect(DEFAULT_SETTINGS.hotkeys.selectionToolbar).toBe("Alt+Q");
+  });
+
+  it("defaults quickAskResetPolicy to after5m", () => {
+    expect(DEFAULT_SETTINGS.quickAskResetPolicy).toBe("after5m");
+  });
+
+  it("defaults selectionAutoPopup to true", () => {
+    expect(DEFAULT_SETTINGS.selectionAutoPopup).toBe(true);
   });
 });
 
@@ -30,6 +39,20 @@ describe("mergeSettings", () => {
     expect(merged.providers).toHaveLength(3);
   });
 
+  it("fills missing quickAskResetPolicy from defaults", () => {
+    const merged = mergeSettings({ theme: "dark" });
+    expect(merged.quickAskResetPolicy).toBe("after5m");
+  });
+
+  it("keeps stored quickAskResetPolicy", () => {
+    const merged = mergeSettings({ quickAskResetPolicy: "never" });
+    expect(merged.quickAskResetPolicy).toBe("never");
+  });
+
+  it("fills missing selectionToolbar hotkey from defaults", () => {
+    expect(mergeSettings({}).hotkeys.selectionToolbar).toBe("Alt+Q");
+  });
+
   it("keeps stored providers when present", () => {
     const merged = mergeSettings({
       providers: [{ id: "x", name: "X", url: "https://x.com", enabled: false, logo: { type: "letter", color: "#000" } }],
@@ -42,5 +65,13 @@ describe("mergeSettings", () => {
     const merged = mergeSettings({ theme: "dark" });
     merged.providers.push({ id: "y", name: "Y", url: "", enabled: true, logo: { type: "letter", color: "#111" } });
     expect(DEFAULT_SETTINGS.providers).toHaveLength(3);
+  });
+
+  it("fills missing selectionAutoPopup from defaults", () => {
+    expect(mergeSettings({}).selectionAutoPopup).toBe(true);
+  });
+
+  it("keeps stored selectionAutoPopup=false", () => {
+    expect(mergeSettings({ selectionAutoPopup: false }).selectionAutoPopup).toBe(false);
   });
 });

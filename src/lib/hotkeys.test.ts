@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { eventToAccelerator, isValidAccelerator, formatAccelerator, hasConflict } from "./hotkeys";
+import { eventToAccelerator, isValidAccelerator, formatAccelerator, hasConflict, hasAnyConflict } from "./hotkeys";
 
 function ev(parts: Partial<KeyboardEvent>): KeyboardEvent {
   return { ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, code: "", key: "", ...parts } as KeyboardEvent;
@@ -39,5 +39,15 @@ describe("hasConflict", () => {
   it("detects identical accelerators", () => {
     expect(hasConflict("CommandOrControl+Space", "CommandOrControl+Space")).toBe(true);
     expect(hasConflict("CommandOrControl+Space", "CommandOrControl+Shift+Space")).toBe(false);
+  });
+});
+
+describe("hasAnyConflict", () => {
+  it("detects a duplicate among three accelerators", () => {
+    expect(hasAnyConflict(["Alt+Q", "Shift+Z", "Alt+Q"])).toBe(true);
+    expect(hasAnyConflict(["Alt+Q", "Shift+Z", "CommandOrControl+Space"])).toBe(false);
+  });
+  it("ignores empty strings", () => {
+    expect(hasAnyConflict(["", "", "Alt+Q"])).toBe(false);
   });
 });

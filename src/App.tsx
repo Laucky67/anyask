@@ -5,7 +5,7 @@ import { ContentArea } from "./components/ContentArea";
 import { SettingsPage } from "./pages/settings/SettingsPage";
 import { useT } from "./i18n";
 import { resolveTheme, applyTheme, watchSystemTheme, systemPrefersDark } from "./lib/theme";
-import { syncAiWebviews, hideAiWebviews, repositionAiWebviews } from "./lib/commands";
+import { syncAiWebviews, hideAiWebviews, repositionAiWebviews, refreshActiveAiWebview } from "./lib/commands";
 
 export default function App() {
   const { settings, ready } = useSettings();
@@ -80,6 +80,9 @@ export default function App() {
           setShowSettings(false);
         }}
         onOpenSettings={() => setShowSettings(true)}
+        onRefresh={() => {
+          if (activeId) void refreshActiveAiWebview(activeId);
+        }}
       />
       <ContentArea
         ref={contentRef}

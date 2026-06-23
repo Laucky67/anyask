@@ -55,3 +55,14 @@ export function formatAccelerator(acc: string): string {
 export function hasConflict(a: string, b: string): boolean {
   return a.length > 0 && a === b;
 }
+
+/** 列表中是否存在重复的有效加速器（任意两个相同即冲突）。空串忽略。 */
+export function hasAnyConflict(accelerators: string[]): boolean {
+  const seen = new Set<string>();
+  for (const acc of accelerators) {
+    if (!acc) continue;
+    if (seen.has(acc)) return true;
+    seen.add(acc);
+  }
+  return false;
+}
