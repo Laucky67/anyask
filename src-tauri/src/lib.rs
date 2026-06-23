@@ -1,5 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod commands;
+mod mouse_hook;
 mod provider_utils;
 mod quick_ask;
 mod selection_toolbar;
