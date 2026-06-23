@@ -23,6 +23,12 @@ pub struct AppState {
     pub ai_webview_urls: Mutex<HashMap<String, String>>,
     /// 划词工具条待显示状态：trigger 写入，前端 get_pending / place_and_show 读消费。
     pub pending_selection: Mutex<PendingSelection>,
+    /// 划词工具条当前物理矩形:可见时 Some(x,y,w,h),隐藏时 None。
+    /// place_and_show 写入,hide 清空;mouse_hook 处理线程据此做"点外部隐藏"命中检测。
+    pub toolbar_rect: Mutex<Option<(i32, i32, i32, i32)>>,
+    /// 划词自动弹出开关(运行态镜像 StoredSettings.selection_auto_popup)。
+    /// 注意:AtomicBool::default() 为 false;真值由 setup 读设置后写入(见 lib.rs)。
+    pub selection_autopopup_enabled: AtomicBool,
 }
 
 /// 划词捕获的待显示状态（运行时，不持久化）。
