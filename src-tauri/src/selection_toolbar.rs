@@ -148,7 +148,7 @@ fn position_window(
     Ok(())
 }
 
-/// 定位（防溢出）并显示。仅接收前端测得的逻辑尺寸；锚点从 pending 读。
+/// 定位(防溢出)并显示。仅接收前端测得的逻辑尺寸;锚点从 pending 读。
 pub fn place_and_show(app: &AppHandle, width: f64, height: f64) -> Result<(), String> {
     let win = app.get_window(LABEL).ok_or("toolbar window not found")?;
     let (anchor_x, anchor_y) = {
@@ -158,11 +158,23 @@ pub fn place_and_show(app: &AppHandle, width: f64, height: f64) -> Result<(), St
     };
     position_window(&win, anchor_x, anchor_y, width, height)?;
     win.show().map_err(|e| e.to_string())?;
-    let _ = win.set_focus();
 
-    // 唯一汇聚点：消费 show（保留 text/x/y 供按钮动作与下次定位）
+    // 记录实际物理矩形,供 mouse_hook 做"点外部隐藏"命中检测。不抢焦点:划词工具条
+    // 抢焦点会让源应用失活、清掉选区;隐藏改由全局点击检测驱动(去掉了 set_focus)。
+    record_toolbar_rect(app, &win);
+
+    // 唯一汇聚点:消费 show(保留 text/x/y 供按钮动作与下次定位)
     app.state::<AppState>().pending_selection.lock().unwrap().show = false;
     Ok(())
+}
+
+/// 读窗口实际物理位置 + 尺寸,写入 AppState.toolbar_rect(Some = 可见)。
+fn record_toolbar_rect(app: &AppHandle, win: &tauri::Window) {
+    let rect = match (win.outer_position(), win.outer_size()) {
+        (Ok(p), Ok(s)) => Some((p.x, p.y, s.width as i32, s.height as i32)),
+        _ => None,
+    };
+    *app.state::<AppState>().toolbar_rect.lock().unwrap() = rect;
 }
 
 /// 找到包含指定物理坐标点的显示器。
@@ -175,11 +187,13 @@ fn monitor_for_point(win: &tauri::Window, x: i32, y: i32) -> Option<tauri::Monit
     })
 }
 
-/// 隐藏工具条（失焦 / 点按钮后调用，不销毁，供复用）。
+/// 隐藏工具条(点外部 / 点按钮后调用,不销毁,供复用)。
 pub fn hide(app: &AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_window(LABEL) {
         win.hide().map_err(|e| e.to_string())?;
     }
+    // 清矩形:隐藏后 mouse_hook 不再把它当命中目标。
+    *app.state::<AppState>().toolbar_rect.lock().unwrap() = None;
     Ok(())
 }
 
