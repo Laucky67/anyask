@@ -10,6 +10,13 @@ vi.mock("../../state/settingsStore", () => ({
   SETTINGS_CHANGED_EVENT: "settings:changed",
 }));
 
+const setSelectionAutoPopup = vi.fn().mockResolvedValue(undefined);
+const setQuickAskProvider = vi.fn().mockResolvedValue(undefined);
+vi.mock("../../lib/commands", () => ({
+  setQuickAskProvider: (url: string) => setQuickAskProvider(url),
+  setSelectionAutoPopup: (v: boolean) => setSelectionAutoPopup(v),
+}));
+
 import { SettingsProvider } from "../../state/SettingsContext";
 import { I18nProvider } from "../../i18n";
 import { BasicSettings } from "./BasicSettings";
@@ -24,7 +31,10 @@ function setup() {
   );
 }
 
-beforeEach(() => saveSettings.mockClear());
+beforeEach(() => {
+  saveSettings.mockClear();
+  setSelectionAutoPopup.mockClear();
+});
 
 describe("BasicSettings", () => {
   it("lists providers as toggle-able enable chips", async () => {
@@ -92,5 +102,14 @@ describe("BasicSettings", () => {
 
     const last = saveSettings.mock.calls.at(-1)![0];
     expect(last.quickAskResetPolicy).toBe("after10m");
+  });
+
+  it("toggles selectionAutoPopup: persists and syncs to backend", async () => {
+    setup();
+    await waitFor(() => screen.getByRole("switch", { name: "划词自动弹出" }));
+    await userEvent.click(screen.getByRole("switch", { name: "划词自动弹出" }));
+    const last = saveSettings.mock.calls.at(-1)![0];
+    expect(last.selectionAutoPopup).toBe(false);
+    expect(setSelectionAutoPopup).toHaveBeenCalledWith(false);
   });
 });

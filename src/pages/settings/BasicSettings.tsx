@@ -3,7 +3,7 @@ import { useSettings } from "../../state/SettingsContext";
 import { useT } from "../../i18n";
 import { Toggle } from "../../components/Toggle";
 import { ProviderLogo } from "../../components/ProviderLogo";
-import { setQuickAskProvider } from "../../lib/commands";
+import { setQuickAskProvider, setSelectionAutoPopup } from "../../lib/commands";
 import type { QuickAskResetPolicy, Settings, ThemeMode } from "../../state/types";
 
 const quickAskResetPolicyOptions: Array<{ value: QuickAskResetPolicy; labelKey: string }> = [
@@ -110,6 +110,21 @@ export function BasicSettings() {
             onChange={(v) => updateSettings({ keepStateOnSwitch: v })}
           />
           <span style={{ color: "var(--fg-muted)", fontSize: 13 }}>{t("basic.keepState.desc")}</span>
+        </div>
+      </section>
+
+      <section>
+        <h3>{t("basic.selectionAutoPopup")}</h3>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Toggle
+            checked={settings.selectionAutoPopup}
+            label={t("basic.selectionAutoPopup")}
+            onChange={(v) => {
+              updateSettings({ selectionAutoPopup: v });
+              void setSelectionAutoPopup(v);
+            }}
+          />
+          <span style={{ color: "var(--fg-muted)", fontSize: 13 }}>{t("basic.selectionAutoPopup.desc")}</span>
         </div>
       </section>
 

@@ -13,6 +13,8 @@ export const zhCN: Record<string, string> = {
   "basic.enabledAi": "启用 AI",
   "basic.keepState": "切出保留状态",
   "basic.keepState.desc": "切换 AI 时保留原对话界面状态",
+  "basic.selectionAutoPopup": "划词自动弹出",
+  "basic.selectionAutoPopup.desc": "选中文本松开鼠标后自动弹出工具条",
   "basic.quickAskResetPolicy": "快捷提问重置为新对话",
   "basic.quickAskResetPolicy.reopen": "重新打开时",
   "basic.quickAskResetPolicy.after5m": "关闭后5分钟",
