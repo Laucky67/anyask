@@ -30,7 +30,7 @@ export function AiConfigSettings() {
   };
 
   const openCard = (p: AiProvider) => {
-    if (tempProvider) return; // 有临时新增时不允许展开其它
+    if (tempProvider) return;
     setOpenId(p.id);
     setDraft({ ...p });
     setErrors({});
@@ -69,7 +69,6 @@ export function AiConfigSettings() {
         await updateSettings({ providers: [...settings.providers, next] });
       } else {
         const resultLogo = await saveProvider({ id: draft.id, name, url, enabled: draft.enabled, logoAction: action });
-        // keep:内置图标与未改动的上传图都不在后端按 id 拼出的磁盘路径上,沿用前端已有 logo 防止裂图
         const logo = action.type === "keep" ? draft.logo : resultLogo;
         const updated: AiProvider = { id: draft.id, name, url, enabled: draft.enabled, logo };
         const nextProviders = settings.providers.map((p) => (p.id === draft.id ? updated : p));
@@ -90,7 +89,6 @@ export function AiConfigSettings() {
 
   const remove = async () => {
     if (!draft || isTemp(draft.id)) return;
-    // 兜底：唯一启用项不可删（UI 已禁用按钮，此处再防御一层）
     if (draft.enabled && !canDisableProvider(settings.providers)) return;
     if (!window.confirm(t("ai.deleteConfirm").replace("{name}", draft.name))) return;
     try {
@@ -108,10 +106,13 @@ export function AiConfigSettings() {
     }
   };
 
-  const cardWrap = { display: "flex", flexDirection: "column" } as const;
+  const cardWrap: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+  };
 
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 10, maxWidth: 820, margin: "0 auto", width: "100%" }}>
       {settings.providers.map((p) => {
         const open = openId === p.id;
         return (
@@ -127,19 +128,28 @@ export function AiConfigSettings() {
                 else openCard(p);
               }}
             />
-            {open && draft && (
-              <ProviderEditPanel
-                draft={draft}
-                errors={errors}
-                isTemp={false}
-                canDisable={canDisableProvider(settings.providers)}
-                saving={saving}
-                onChange={changeDraft}
-                onSave={() => void save()}
-                onCancel={closeCard}
-                onDelete={() => void remove()}
-              />
-            )}
+            <div
+              style={{
+                overflow: "hidden",
+                maxHeight: open ? "600px" : "0",
+                opacity: open ? 1 : 0,
+                transition: `max-height 0.35s var(--ease-out-expo), opacity 0.3s var(--ease-out-expo)`,
+              }}
+            >
+              {draft && openId === p.id && (
+                <ProviderEditPanel
+                  draft={draft}
+                  errors={errors}
+                  isTemp={false}
+                  canDisable={canDisableProvider(settings.providers)}
+                  saving={saving}
+                  onChange={changeDraft}
+                  onSave={() => void save()}
+                  onCancel={closeCard}
+                  onDelete={() => void remove()}
+                />
+              )}
+            </div>
           </div>
         );
       })}
@@ -147,17 +157,26 @@ export function AiConfigSettings() {
       {tempProvider && draft && openId === tempProvider.id && (
         <div style={cardWrap}>
           <ProviderCard name={draft.name} logo={draft.logo} arrow="up" size="lg" />
-          <ProviderEditPanel
-            draft={draft}
-            errors={errors}
-            isTemp
-            canDisable
-            saving={saving}
-            onChange={changeDraft}
-            onSave={() => void save()}
-            onCancel={closeCard}
-            onDelete={() => {}}
-          />
+          <div
+            style={{
+              overflow: "hidden",
+              maxHeight: "600px",
+              opacity: 1,
+              transition: `max-height 0.35s var(--ease-out-expo), opacity 0.3s var(--ease-out-expo)`,
+            }}
+          >
+            <ProviderEditPanel
+              draft={draft}
+              errors={errors}
+              isTemp
+              canDisable
+              saving={saving}
+              onChange={changeDraft}
+              onSave={() => void save()}
+              onCancel={closeCard}
+              onDelete={() => {}}
+            />
+          </div>
         </div>
       )}
 
@@ -166,9 +185,37 @@ export function AiConfigSettings() {
           type="button"
           aria-label={t("ai.add")}
           onClick={handleAdd}
-          style={{ width: "100%", height: 60, display: "flex", alignItems: "center", justifyContent: "center", border: "2px dashed var(--border)", borderRadius: 10, background: "transparent", color: "var(--fg-muted)", cursor: "pointer" }}
+          style={{
+            width: "100%",
+            height: 56,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            border: "2px dashed var(--border)",
+            borderRadius: "var(--radius-md)",
+            background: "transparent",
+            color: "var(--fg-muted)",
+            cursor: "pointer",
+            fontSize: 15,
+            fontWeight: 500,
+            transition: `border-color 0.2s var(--ease-out-expo), color 0.2s var(--ease-out-expo), transform 0.15s var(--ease-out-expo)`,
+          }}
+          onMouseEnter={(e) => {
+            const el = e.currentTarget as HTMLElement;
+            el.style.borderColor = "var(--accent)";
+            el.style.color = "var(--accent)";
+            el.style.transform = "scale(1.01)";
+          }}
+          onMouseLeave={(e) => {
+            const el = e.currentTarget as HTMLElement;
+            el.style.borderColor = "var(--border)";
+            el.style.color = "var(--fg-muted)";
+            el.style.transform = "scale(1)";
+          }}
         >
-          <Plus size={24} />
+          <Plus size={22} />
+          {t("ai.add")}
         </button>
       )}
     </div>

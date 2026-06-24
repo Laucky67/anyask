@@ -17,14 +17,15 @@ interface Props {
   onDelete: () => void;
 }
 
-const labelCol = { width: 80, fontSize: 13, color: "var(--fg-muted)", flexShrink: 0 } as const;
+const labelCol = { width: 80, fontSize: 14, color: "var(--fg-muted)", flexShrink: 0 } as const;
 const inputStyle = {
   flex: 1,
-  padding: "8px 12px",
+  padding: "9px 12px",
   borderRadius: 8,
   border: "1px solid var(--border)",
   background: "var(--bg)",
   color: "var(--fg)",
+  fontSize: 15,
 } as const;
 
 export function ProviderEditPanel({
@@ -53,25 +54,25 @@ export function ProviderEditPanel({
   };
 
   return (
-    <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14, borderTop: "1px solid var(--border)" }}>
+    <div style={{ padding: "16px 16px 20px", display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Logo 区：居中。未上传=圆形虚线框 + Plus；已上传=缩略图 + 右下铅笔徽标 */}
-      <div style={{ display: "flex", justifyContent: "center", paddingTop: 4 }}>
+      <div style={{ display: "flex", justifyContent: "center", paddingTop: 8, paddingBottom: 8 }}>
         <button
           type="button"
           aria-label={t("ai.uploadLogo")}
           onClick={() => fileRef.current?.click()}
-          style={{ position: "relative", width: 64, height: 64, padding: 0, border: "none", background: "transparent", cursor: "pointer" }}
+          style={{ position: "relative", width: 40, height: 40, padding: 0, border: "none", background: "transparent", cursor: "pointer" }}
         >
           {hasImage && draft.logo.type === "image" ? (
             <>
-              <img src={draft.logo.src} alt="" width={64} height={64} style={{ borderRadius: 14, objectFit: "cover" }} />
-              <span style={{ position: "absolute", right: -4, bottom: -4, width: 22, height: 22, borderRadius: "50%", background: "var(--bg)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Pencil size={12} color="var(--fg-muted)" />
+              <img src={draft.logo.src} alt="" width={40} height={40} style={{ borderRadius: 10, objectFit: "cover" }} />
+              <span style={{ position: "absolute", right: -3, bottom: -3, width: 16, height: 16, borderRadius: "50%", background: "var(--bg)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Pencil size={9} color="var(--fg-muted)" />
               </span>
             </>
           ) : (
-            <span style={{ width: 64, height: 64, borderRadius: "50%", border: "2px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-muted)" }}>
-              <Plus size={24} />
+            <span style={{ width: 40, height: 40, borderRadius: "50%", border: "2px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-muted)" }}>
+              <Plus size={18} />
             </span>
           )}
         </button>
@@ -83,30 +84,30 @@ export function ProviderEditPanel({
           onChange={(e) => void pickLogo(e.target.files?.[0])}
         />
       </div>
-      {logoError && <p style={{ color: "#e0533a", fontSize: 12, textAlign: "center", margin: 0 }}>{t(logoError)}</p>}
+      {logoError && <p style={{ color: "#e0533a", fontSize: 13, textAlign: "center", margin: 0 }}>{t(logoError)}</p>}
 
       {/* 名称 */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span style={labelCol}>{t("ai.name")}</span>
         <input aria-label={t("ai.name")} value={draft.name} onChange={(e) => onChange({ name: e.target.value })} style={inputStyle} />
       </div>
-      {errors.name && <p style={{ color: "#e0533a", fontSize: 12, margin: "0 0 0 92px" }}>{t(errors.name)}</p>}
+      {errors.name && <p style={{ color: "#e0533a", fontSize: 13, margin: "0 0 0 92px" }}>{t(errors.name)}</p>}
 
       {/* URL */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span style={labelCol}>{t("ai.url")}</span>
         <input aria-label={t("ai.url")} value={draft.url} onChange={(e) => onChange({ url: e.target.value })} style={inputStyle} />
       </div>
-      {errors.url && <p style={{ color: "#e0533a", fontSize: 12, margin: "0 0 0 92px" }}>{t(errors.url)}</p>}
+      {errors.url && <p style={{ color: "#e0533a", fontSize: 13, margin: "0 0 0 92px" }}>{t(errors.url)}</p>}
 
       {/* 启用 */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span style={labelCol}>{t("ai.enabled")}</span>
         <Toggle checked={draft.enabled} label={t("ai.enabled")} disabled={isOnlyEnabled} onChange={(v) => onChange({ enabled: v })} />
-        {isOnlyEnabled && <span style={{ color: "#e0a23a", fontSize: 12 }}>{t("settings.atLeastOneEnabled")}</span>}
+        {isOnlyEnabled && <span style={{ color: "#e0a23a", fontSize: 13 }}>{t("settings.atLeastOneEnabled")}</span>}
       </div>
 
-      {errors.general && <p style={{ color: "#e0533a", fontSize: 12, margin: 0 }}>{t(errors.general)}</p>}
+      {errors.general && <p style={{ color: "#e0533a", fontSize: 13, margin: 0 }}>{t(errors.general)}</p>}
 
       {/* 底部操作：删除居左（临时项隐藏），保存 + 取消居右 */}
       <div style={{ display: "flex", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: 14 }}>
@@ -116,7 +117,7 @@ export function ProviderEditPanel({
             onClick={onDelete}
             disabled={isOnlyEnabled}
             title={isOnlyEnabled ? t("settings.atLeastOneEnabled") : undefined}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "1px solid #e0533a", background: "transparent", color: "#e0533a", cursor: isOnlyEnabled ? "not-allowed" : "pointer", opacity: isOnlyEnabled ? 0.5 : 1 }}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "1px solid #e0533a", background: "transparent", color: "#e0533a", fontSize: 14, cursor: isOnlyEnabled ? "not-allowed" : "pointer", opacity: isOnlyEnabled ? 0.5 : 1 }}
           >
             <Trash2 size={16} />
             {t("ai.delete")}
@@ -127,14 +128,14 @@ export function ProviderEditPanel({
           type="button"
           onClick={onSave}
           disabled={saving}
-          style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", cursor: saving ? "default" : "pointer", marginRight: 8, opacity: saving ? 0.6 : 1 }}
+          style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, cursor: saving ? "default" : "pointer", marginRight: 8, opacity: saving ? 0.6 : 1 }}
         >
           {t("ai.save")}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--fg)", cursor: "pointer" }}
+          style={{ padding: "8px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--fg)", fontSize: 14, cursor: "pointer" }}
         >
           {t("ai.cancel")}
         </button>

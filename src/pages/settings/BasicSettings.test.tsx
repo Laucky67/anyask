@@ -95,10 +95,12 @@ describe("BasicSettings", () => {
 
   it("persists quick ask reset policy changes", async () => {
     setup();
-    const select = await screen.findByRole("combobox", { name: "快捷提问重置为新对话" });
-    expect(select).toHaveValue("after5m");
+    const combobox = await screen.findByRole("combobox", { name: "快捷提问重置为新对话" });
+    expect(combobox.textContent).toContain("关闭后5分钟");
 
-    await userEvent.selectOptions(select, "after10m");
+    await userEvent.click(combobox);
+    const option = await screen.findByRole("option", { name: "关闭后10分钟" });
+    await userEvent.click(option);
 
     const last = saveSettings.mock.calls.at(-1)![0];
     expect(last.quickAskResetPolicy).toBe("after10m");

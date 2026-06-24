@@ -19,7 +19,7 @@ export function Sidebar({ providers, activeId, settingsActive, onSelect, onOpenS
       style={{
         width: "var(--sidebar-w)",
         height: "100%",
-        background: "var(--bg-elev)",
+        background: "var(--sidebar-bg)",
         borderRight: "1px solid var(--border)",
         display: "flex",
         flexDirection: "column",
@@ -28,8 +28,10 @@ export function Sidebar({ providers, activeId, settingsActive, onSelect, onOpenS
         gap: 12,
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, flex: 1 }}>
-        {providers.map((p) => (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
+        {providers.map((p) => {
+          const active = !settingsActive && activeId === p.id;
+          return (
           <button
             key={p.id}
             type="button"
@@ -38,16 +40,17 @@ export function Sidebar({ providers, activeId, settingsActive, onSelect, onOpenS
             onClick={() => onSelect(p.id)}
             style={{
               border: "none",
-              background: "transparent",
+              background: active ? "var(--border)" : "transparent",
               cursor: "pointer",
-              padding: 2,
-              borderRadius: 10,
-              outline: !settingsActive && activeId === p.id ? "2px solid var(--accent)" : "2px solid transparent",
+              padding: 8,
+              borderRadius: 12,
+              transition: `background 0.2s var(--ease-out-expo)`,
             }}
           >
-            <ProviderLogo name={p.name} logo={p.logo} size={40} />
+            <ProviderLogo name={p.name} logo={p.logo} size={24} />
           </button>
-        ))}
+        );
+        })}
       </div>
       <button
         type="button"

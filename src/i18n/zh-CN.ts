@@ -15,6 +15,8 @@ export const zhCN: Record<string, string> = {
   "basic.keepState.desc": "切换 AI 时保留原对话界面状态",
   "basic.selectionAutoPopup": "划词自动弹出",
   "basic.selectionAutoPopup.desc": "选中文本松开鼠标后自动弹出工具条",
+  "basic.quickAskProvider": "快捷提问默认 AI",
+  "basic.quickAskProvider.desc": "选中文本后快捷提问使用的 AI 模型",
   "basic.quickAskResetPolicy": "快捷提问重置为新对话",
   "basic.quickAskResetPolicy.reopen": "重新打开时",
   "basic.quickAskResetPolicy.after5m": "关闭后5分钟",
@@ -58,4 +60,6 @@ export const zhCN: Record<string, string> = {
   "selection.translate": "翻译",
   "selection.summarize": "总结",
   "selection.copy": "复制",
+  "basic.providerEnabled": "启用状态",
+  "hotkeys.setLabel": "设置 {label} 快捷键",
 };

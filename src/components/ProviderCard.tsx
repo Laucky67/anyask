@@ -26,7 +26,7 @@ export function ProviderCard({ name, logo, selected, onClick, width = "100%", lo
   const active = selected || hover;
   const dims =
     size === "lg"
-      ? { pad: "14px 16px", font: 16, weight: 600, logo: 32 }
+      ? { pad: "16px 18px", font: 18, weight: 600, logo: 24 }
       : { pad: "8px 12px", font: 14, weight: 400, logo: 28 };
   const ls = logoSize ?? dims.logo;
 
