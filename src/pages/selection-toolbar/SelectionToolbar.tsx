@@ -4,15 +4,17 @@ import { useT } from "../../i18n";
 import {
   BUILTIN_SELECTION_ACTIONS,
   ICON_REGISTRY,
+  buildSelectionPrompt,
   enabledActions,
   type SelectionAction,
 } from "../../state/selectionActions";
+import { useSettings } from "../../state/SettingsContext";
 import {
   placeAndShowSelectionToolbar,
   hideSelectionToolbar,
   getPendingSelectionShow,
   copySelection,
-  showQuickAsk,
+  showQuickAskWithPrompt,
 } from "../../lib/commands";
 import styles from "./SelectionToolbar.module.css";
 
@@ -37,6 +39,7 @@ function ToolbarButton({
 
 export function SelectionToolbar() {
   const t = useT();
+  const { settings } = useSettings();
   const outerRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<string>("");
   const actions = enabledActions(BUILTIN_SELECTION_ACTIONS);
@@ -77,12 +80,14 @@ export function SelectionToolbar() {
     if (action.kind === "copy") {
       void copySelection();
     } else {
-      // 三个非复制按钮本期一致：打印捕获文本（备份观察）+ 打开快捷提问
-      console.log("[selection]", action.kind, textRef.current);
-      void showQuickAsk();
+      const selectedText = textRef.current;
+      const prompt = selectedText.trim()
+        ? buildSelectionPrompt(action, selectedText, settings.language)
+        : null;
+      void showQuickAskWithPrompt(prompt);
     }
     void hideSelectionToolbar();
-  }, []);
+  }, [settings.language]);
 
   return (
     // 窗口尺寸 = 本药丸尺寸（place_and_show 按实测 rect 设窗），不留任何透明边距，

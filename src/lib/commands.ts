@@ -153,6 +153,11 @@ export async function showQuickAsk(): Promise<void> {
   await invoke("show_quick_ask");
 }
 
+/** 打开快捷提问窗口并注入 prompt；prompt=null 表示只打开并取消旧注入 */
+export async function showQuickAskWithPrompt(prompt: string | null): Promise<void> {
+  await invoke("show_quick_ask_with_prompt", { prompt });
+}
+
 /** 设置划词自动弹出开关(运行态);与 updateSettings 并行调用 */
 export async function setSelectionAutoPopup(enabled: boolean): Promise<void> {
   await invoke("set_selection_auto_popup", { enabled });
