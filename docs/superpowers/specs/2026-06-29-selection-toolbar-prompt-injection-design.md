@@ -30,7 +30,7 @@ quick-ask 窗口由本地 React 壳 `quick-ask` 和外部 AI 子 WebView `quick-
 
 - 定义内置划词动作和默认提示词模板。
 - 根据动作、选中文本和用户语言构造最终 prompt。
-- 判断空文本时只打开 quick-ask，不传 prompt。
+- 判断空文本时只打开 quick-ask，不填充输入框，并取消上一轮尚未完成的 prompt 注入。
 - 未来承接自定义按钮和自定义提示词模板。
 
 Rust 负责：
@@ -107,7 +107,7 @@ const actions = enabledActions([
 点击逻辑：
 
 - `copy`：沿用 `copySelection()`，然后隐藏工具条。
-- 非 `copy` 且 `textRef.current.trim()` 为空：调用 `showQuickAsk()`，不注入 prompt，然后隐藏工具条。
+- 非 `copy` 且 `textRef.current.trim()` 为空：调用 `showQuickAskWithPrompt(null)`，不注入 prompt，但取消上一轮尚未完成的注入，然后隐藏工具条。
 - 非 `copy` 且文本非空：构造 prompt，调用 `showQuickAskWithPrompt(prompt)`，然后隐藏工具条。
 
 保留原始选区文本用于 prompt，不对注入内容做 trim。
@@ -120,7 +120,7 @@ const actions = enabledActions([
 
 ```rust
 #[tauri::command]
-pub fn show_quick_ask_with_prompt(app: AppHandle, prompt: String) {
+pub fn show_quick_ask_with_prompt(app: AppHandle, prompt: Option<String>) {
     quick_ask::show_with_prompt_deferred(app, prompt);
 }
 ```
@@ -128,7 +128,7 @@ pub fn show_quick_ask_with_prompt(app: AppHandle, prompt: String) {
 前端 `src/lib/commands.ts` 增加：
 
 ```ts
-export async function showQuickAskWithPrompt(prompt: string): Promise<void> {
+export async function showQuickAskWithPrompt(prompt: string | null): Promise<void> {
   await invoke("show_quick_ask_with_prompt", { prompt });
 }
 ```
@@ -137,9 +137,9 @@ export async function showQuickAskWithPrompt(prompt: string): Promise<void> {
 
 新增 deferred 注入入口：
 
-- `show_with_prompt_deferred(app, prompt)`：异步延迟 1ms 后调用显示逻辑，再触发 prompt 注入。
+- `show_with_prompt_deferred(app, prompt)`：异步延迟 1ms 后调用显示逻辑；`prompt` 为非空文本时触发注入，`None` 或空白字符串只显示窗口并取消旧注入。
 - 显示逻辑复用现有 `show(&app)`，不主动新建对话，不改变 reset policy。
-- 如果 prompt 为空字符串，不执行注入，只显示窗口。
+- 如果 prompt 为 `None` 或空白字符串，不执行注入，只显示窗口。
 
 为连续触发增加 generation/token：
 
@@ -179,7 +179,7 @@ Rust 生成 JS 时必须通过 JSON 字符串序列化 prompt 和 token，避免
 - `eval` 返回错误：记录日志，不向前端抛错，不阻塞工具条隐藏。
 - 输入框非空：视为用户已有编辑内容，停止注入，不提示。
 - 10 秒内找不到输入框：停止轮询，不提示。
-- 空选文本：仍打开 quick-ask，不构造和注入 prompt。
+- 空选文本：仍打开 quick-ask，不构造和注入 prompt，并取消旧注入。
 
 这些行为避免在划词工具条这种短交互里引入额外 UI 状态，同时保护用户已经输入的内容。
 
@@ -193,7 +193,7 @@ Vitest：
 - `buildSelectionPrompt` 能渲染解释、翻译、总结。
 - `zh-CN` 映射为“简体中文”。
 - 模板渲染保留原始选区格式。
-- 空白选区点击非复制按钮会调用 `showQuickAsk()`，不会调用 `showQuickAskWithPrompt()`。
+- 空白选区点击非复制按钮会调用 `showQuickAskWithPrompt(null)`，不会注入文本。
 - 非空选区点击非复制按钮会调用 `showQuickAskWithPrompt(prompt)`。
 - 复制按钮仍只调用 `copySelection()`，不打开 quick-ask。
 
