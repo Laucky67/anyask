@@ -13,12 +13,111 @@ const AI_LABEL: &str = "quick-ask-ai"; // 顶栏下方承载 AI 站点的子 web
 const WIDTH: f64 = 400.0;
 const HEIGHT: f64 = 600.0;
 const TOPBAR_HEIGHT: f64 = 40.0; // 必须与前端 QuickAskBar 高度一致
+const WEBVIEW_LOOKUP_RETRY_MS: u64 = 50;
+const WEBVIEW_LOOKUP_MAX_ATTEMPTS: u8 = 20;
+const PROMPT_INJECTION_INTERVAL_MS: u64 = 500;
+const PROMPT_INJECTION_TIMEOUT_MS: u64 = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResetDelay {
     Immediate,
     After(Duration),
     Never,
+}
+
+fn prompt_token(generation: u64) -> String {
+    format!("anyask-prompt-{generation}")
+}
+
+fn prompt_generation_matches(current: u64, generation: u64) -> bool {
+    current == generation
+}
+
+fn prompt_injection_script(prompt: &str, generation: u64) -> String {
+    let prompt_json = serde_json::to_string(prompt).unwrap_or_else(|_| "\"\"".to_string());
+    let token_json = serde_json::to_string(&prompt_token(generation))
+        .unwrap_or_else(|_| "\"anyask-prompt-invalid\"".to_string());
+    const SCRIPT_TEMPLATE: &str = r#"(function () {
+  'use strict';
+
+  const PROMPT = __ANYASK_PROMPT__;
+  const TOKEN = __ANYASK_TOKEN__;
+
+  window.__ANYASK_QUICK_PROMPT_TOKEN__ = TOKEN;
+
+  function isCurrent() {
+    return window.__ANYASK_QUICK_PROMPT_TOKEN__ === TOKEN;
+  }
+
+  function setInputText(el, text) {
+    if (!isCurrent()) return;
+    el.focus();
+
+    if (el.getAttribute('contenteditable') === 'true') {
+      el.innerText = text;
+      el.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: text
+      }));
+    } else {
+      el.value = text;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  function findInput() {
+    return document.querySelector('#prompt-textarea')
+      || document.querySelector('[contenteditable="true"]')
+      || document.querySelector('textarea');
+  }
+
+  function inputText(el) {
+    if (el.getAttribute('contenteditable') === 'true') {
+      return el.innerText || '';
+    }
+    return el.value || '';
+  }
+
+  function injectPrompt() {
+    if (!isCurrent()) return true;
+
+    const input = findInput();
+    if (!input) return false;
+
+    const currentText = inputText(input);
+    if (currentText.trim()) return true;
+
+    setInputText(input, PROMPT);
+    return true;
+  }
+
+  const timer = setInterval(() => {
+    if (injectPrompt()) {
+      clearInterval(timer);
+    }
+  }, __ANYASK_INTERVAL_MS__);
+
+  setTimeout(() => clearInterval(timer), __ANYASK_TIMEOUT_MS__);
+})();"#;
+
+    SCRIPT_TEMPLATE
+        .replace("__ANYASK_PROMPT__", &prompt_json)
+        .replace("__ANYASK_TOKEN__", &token_json)
+        .replace(
+            "__ANYASK_INTERVAL_MS__",
+            &PROMPT_INJECTION_INTERVAL_MS.to_string(),
+        )
+        .replace(
+            "__ANYASK_TIMEOUT_MS__",
+            &PROMPT_INJECTION_TIMEOUT_MS.to_string(),
+        )
+}
+
+fn prompt_cancel_script(generation: u64) -> String {
+    let token_json = serde_json::to_string(&prompt_token(generation))
+        .unwrap_or_else(|_| "\"anyask-prompt-invalid\"".to_string());
+    format!("window.__ANYASK_QUICK_PROMPT_TOKEN__ = {token_json};")
 }
 
 fn reset_delay(policy: QuickAskResetPolicy) -> ResetDelay {
@@ -444,5 +543,51 @@ mod tests {
             visible_toggle_action(Err(()), true),
             VisibleToggleAction::Hide
         );
+    }
+
+    #[test]
+    fn prompt_token_uses_generation() {
+        assert_eq!(prompt_token(7), "anyask-prompt-7");
+    }
+
+    #[test]
+    fn prompt_generation_matches_only_same_generation() {
+        assert!(prompt_generation_matches(3, 3));
+        assert!(!prompt_generation_matches(4, 3));
+    }
+
+    #[test]
+    fn prompt_injection_script_serializes_prompt_as_json() {
+        let prompt = "line 1\n\"quoted\" and \\\\ slash";
+        let script = prompt_injection_script(prompt, 7);
+        let prompt_json = serde_json::to_string(prompt).unwrap();
+
+        assert!(script.contains(&format!("const PROMPT = {prompt_json};")));
+        assert!(script.contains("const TOKEN = \"anyask-prompt-7\";"));
+        assert!(!script.contains("const PROMPT = line 1"));
+    }
+
+    #[test]
+    fn prompt_cancel_script_sets_only_the_current_token() {
+        let script = prompt_cancel_script(9);
+
+        assert!(script.contains("window.__ANYASK_QUICK_PROMPT_TOKEN__ = \"anyask-prompt-9\";"));
+        assert!(!script.contains("const PROMPT"));
+        assert!(!script.contains("setInterval"));
+    }
+
+    #[test]
+    fn prompt_injection_script_contains_expected_dom_strategy() {
+        let script = prompt_injection_script("hello", 1);
+
+        assert!(script.contains("document.querySelector('#prompt-textarea')"));
+        assert!(script.contains("document.querySelector('[contenteditable=\"true\"]')"));
+        assert!(script.contains("document.querySelector('textarea')"));
+        assert!(script.contains("currentText.trim()"));
+        assert!(script.contains("setInterval(() =>"));
+        assert!(script.contains("}, 500);"));
+        assert!(script.contains("setTimeout(() => clearInterval(timer), 10000);"));
+        assert!(script.contains("new InputEvent('input'"));
+        assert!(script.contains("new Event('input'"));
     }
 }
