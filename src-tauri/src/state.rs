@@ -13,6 +13,8 @@ pub struct AppState {
     pub quick_ask_pinned: Mutex<bool>,
     /// 单调递增 token，用于让隐藏后注销任务失效。
     pub quick_ask_reset_generation: AtomicU64,
+    /// 单调递增 token，用于让后一次 prompt 注入取消前一次尚未完成的注入。
+    pub quick_ask_prompt_generation: AtomicU64,
     /// 记录快捷提问窗口整体焦点。AI 子 WebView 获取输入焦点时，父窗口
     /// is_focused() 可能不稳定，因此快捷键隐藏逻辑不能只依赖父窗口查询。
     pub quick_ask_focused: AtomicBool,

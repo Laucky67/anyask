@@ -66,6 +66,7 @@ pub fn run() {
             commands::copy_selection,
             commands::set_selection_auto_popup,
             commands::show_quick_ask,
+            commands::show_quick_ask_with_prompt,
             commands::add_provider,
             commands::validate_and_save_provider,
             commands::delete_provider,

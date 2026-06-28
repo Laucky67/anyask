@@ -199,6 +199,125 @@ pub fn cancel_pending_reset(app: &AppHandle) {
     println!("[quick-ask] reset cancelled: generation={generation}");
 }
 
+fn prompt_for_injection(prompt: Option<String>) -> Option<String> {
+    prompt.filter(|value| !value.trim().is_empty())
+}
+
+fn next_prompt_generation(app: &AppHandle) -> u64 {
+    app.state::<AppState>()
+        .quick_ask_prompt_generation
+        .fetch_add(1, Ordering::SeqCst)
+        + 1
+}
+
+fn current_prompt_generation(app: &AppHandle) -> u64 {
+    app.state::<AppState>()
+        .quick_ask_prompt_generation
+        .load(Ordering::SeqCst)
+}
+
+fn is_prompt_generation_current(app: &AppHandle, generation: u64) -> bool {
+    prompt_generation_matches(current_prompt_generation(app), generation)
+}
+
+fn eval_script(
+    app: &AppHandle,
+    script: String,
+    generation: u64,
+    action: &str,
+) -> Result<bool, String> {
+    if !is_prompt_generation_current(app, generation) {
+        println!("[quick-ask] prompt {action} skipped: generation={generation}, reason=stale");
+        return Ok(true);
+    }
+
+    let Some(wv) = app.get_webview(AI_LABEL) else {
+        return Ok(false);
+    };
+
+    wv.eval(&script).map_err(|e| e.to_string())?;
+    println!("[quick-ask] prompt {action} scheduled: generation={generation}");
+    Ok(true)
+}
+
+fn eval_prompt_script(app: &AppHandle, prompt: &str, generation: u64) -> Result<bool, String> {
+    eval_script(
+        app,
+        prompt_injection_script(prompt, generation),
+        generation,
+        "injection",
+    )
+}
+
+fn eval_cancel_script(app: &AppHandle, generation: u64) -> Result<bool, String> {
+    eval_script(
+        app,
+        prompt_cancel_script(generation),
+        generation,
+        "cancellation",
+    )
+}
+
+async fn inject_prompt_when_ready(app: AppHandle, prompt: String, generation: u64) {
+    for attempt in 0..=WEBVIEW_LOOKUP_MAX_ATTEMPTS {
+        if !is_prompt_generation_current(&app, generation) {
+            println!(
+                "[quick-ask] prompt injection cancelled: generation={generation}, reason=stale"
+            );
+            return;
+        }
+
+        match eval_prompt_script(&app, &prompt, generation) {
+            Ok(true) => return,
+            Ok(false) if attempt < WEBVIEW_LOOKUP_MAX_ATTEMPTS => {
+                tokio::time::sleep(Duration::from_millis(WEBVIEW_LOOKUP_RETRY_MS)).await;
+            }
+            Ok(false) => {
+                eprintln!(
+                    "[quick-ask] prompt injection skipped: generation={generation}, reason=ai_webview_missing"
+                );
+                return;
+            }
+            Err(error) => {
+                eprintln!(
+                    "[quick-ask] prompt injection failed: generation={generation}, error={error}"
+                );
+                return;
+            }
+        }
+    }
+}
+
+async fn cancel_prompt_when_ready(app: AppHandle, generation: u64) {
+    for attempt in 0..=WEBVIEW_LOOKUP_MAX_ATTEMPTS {
+        if !is_prompt_generation_current(&app, generation) {
+            println!(
+                "[quick-ask] prompt cancellation skipped: generation={generation}, reason=stale"
+            );
+            return;
+        }
+
+        match eval_cancel_script(&app, generation) {
+            Ok(true) => return,
+            Ok(false) if attempt < WEBVIEW_LOOKUP_MAX_ATTEMPTS => {
+                tokio::time::sleep(Duration::from_millis(WEBVIEW_LOOKUP_RETRY_MS)).await;
+            }
+            Ok(false) => {
+                eprintln!(
+                    "[quick-ask] prompt cancellation skipped: generation={generation}, reason=ai_webview_missing"
+                );
+                return;
+            }
+            Err(error) => {
+                eprintln!(
+                    "[quick-ask] prompt cancellation failed: generation={generation}, error={error}"
+                );
+                return;
+            }
+        }
+    }
+}
+
 fn schedule_reset_after_hide(app: &AppHandle, policy: QuickAskResetPolicy) {
     let generation = next_reset_generation(app);
     match reset_delay(policy) {
@@ -390,6 +509,22 @@ pub fn show_deferred(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_millis(1)).await;
         show(&app);
+    });
+}
+
+pub fn show_with_prompt_deferred(app: AppHandle, prompt: Option<String>) {
+    let generation = next_prompt_generation(&app);
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(1)).await;
+        show(&app);
+
+        let Some(prompt) = prompt_for_injection(prompt) else {
+            println!("[quick-ask] prompt injection skipped: generation={generation}, reason=empty");
+            cancel_prompt_when_ready(app, generation).await;
+            return;
+        };
+
+        inject_prompt_when_ready(app, prompt, generation).await;
     });
 }
 
@@ -589,5 +724,18 @@ mod tests {
         assert!(script.contains("setTimeout(() => clearInterval(timer), 10000);"));
         assert!(script.contains("new InputEvent('input'"));
         assert!(script.contains("new Event('input'"));
+    }
+
+    #[test]
+    fn prompt_for_injection_discards_none_and_blank() {
+        assert_eq!(prompt_for_injection(None), None);
+        assert_eq!(prompt_for_injection(Some(String::new())), None);
+        assert_eq!(prompt_for_injection(Some(" \n\t ".into())), None);
+    }
+
+    #[test]
+    fn prompt_for_injection_keeps_original_non_blank_text() {
+        let prompt = "  hello\nworld  ".to_string();
+        assert_eq!(prompt_for_injection(Some(prompt.clone())), Some(prompt));
     }
 }

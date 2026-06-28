@@ -88,6 +88,11 @@ pub fn show_quick_ask(app: AppHandle) {
     quick_ask::show_deferred(app);
 }
 
+#[tauri::command]
+pub fn show_quick_ask_with_prompt(app: AppHandle, prompt: Option<String>) {
+    quick_ask::show_with_prompt_deferred(app, prompt);
+}
+
 /// 确保 logo 目录存在并返回它
 fn logo_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
