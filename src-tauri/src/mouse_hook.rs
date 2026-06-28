@@ -177,7 +177,14 @@ fn schedule_capture(app: AppHandle, x: i32, y: i32) {
         if gen_now != gen_at_schedule || !enabled || visible {
             return; // 延迟窗口内发生新输入 / 关开关 / 已可见 → 丢弃
         }
-        crate::selection_toolbar::trigger_at(&app, x, y, true);
+        // 划词自动路径:只读无障碍,读不到就不弹,绝不合成 Ctrl+C(挡住拖窗口误触 SIGINT)。
+        crate::selection_toolbar::trigger_at(
+            &app,
+            x,
+            y,
+            true,
+            crate::selection_toolbar::CaptureMode::AccessibilityOnly,
+        );
     });
 }
 

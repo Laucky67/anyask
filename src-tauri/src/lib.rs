@@ -3,6 +3,7 @@ mod commands;
 mod mouse_hook;
 mod provider_utils;
 mod quick_ask;
+mod selection_capture;
 mod selection_toolbar;
 mod settings_io;
 mod shortcuts;

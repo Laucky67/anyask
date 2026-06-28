@@ -34,3 +34,18 @@ get-selected-text = "0.1.6"
 rdev = "0.5.3"
 tauri-plugin-clipboard-manager = "2"
 
+# 划词无障碍取词:按平台读「焦点元素当前选区」,零副作用(不合成 Ctrl+C)。
+# get-selected-text 保留,仅作快捷键路径读不到时的剪贴板兜底。
+[target.'cfg(windows)'.dependencies]
+# UI Automation 高层封装(Apache-2.0):焦点元素 → TextPattern → get_selection。
+uiautomation = "0.25"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# AX API 原始 FFI(MIT/Apache) + CoreFoundation 内存/字符串封装。
+accessibility-sys = "0.1"
+core-foundation = "0.10"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# 读 X11 PRIMARY selection(选中即入、读取被动、零副作用)。
+arboard = "3"
+
