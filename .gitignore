@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .vite/
+
+# Claude Code local files (worktrees / settings)
+.claude/
