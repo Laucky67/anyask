@@ -31,22 +31,64 @@ fn clamp_to_monitor(anchor_x: i32, anchor_y: i32, w: i32, h: i32, mon: MonitorRe
     (x, y)
 }
 
+/// 取词策略:区分划词自动路径与快捷键路径。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureMode {
+    /// 划词自动路径:只读无障碍,读不到就放弃,**永不合成 Ctrl+C**(挡住拖窗口误触 SIGINT)。
+    AccessibilityOnly,
+    /// 快捷键路径(用户主动按键):无障碍读不到再用剪贴板(Ctrl+C)兜底。
+    AccessibilityThenClipboard,
+}
+
+/// 取词计划:由 plan_capture 纯判定,trigger_at 据此执行(仅剪贴板分支有副作用)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CapturePlan {
+    /// 无障碍已取到非空选区,直接用。
+    Use(String),
+    /// 无障碍没取到,且允许兜底 → 走剪贴板(合成 Ctrl+C)。
+    Clipboard,
+    /// 无障碍没取到且不允许兜底 → 空串(配合 require_text 即不弹)。
+    Empty,
+}
+
+/// 纯判定:给定无障碍取词结果 + 模式,决定如何得到最终文本。副作用由 trigger_at 执行。
+fn plan_capture(accessibility: Option<String>, mode: CaptureMode) -> CapturePlan {
+    match (accessibility, mode) {
+        (Some(text), _) => CapturePlan::Use(text),
+        (None, CaptureMode::AccessibilityThenClipboard) => CapturePlan::Clipboard,
+        (None, CaptureMode::AccessibilityOnly) => CapturePlan::Empty,
+    }
+}
+
 /// 全局快捷键入口(按键 Released 时调用):用缓存光标坐标作锚点,捕获选区并弹工具条。
 pub fn trigger(app: &AppHandle) {
     let (x, y) = crate::mouse_hook::last_position().unwrap_or_else(|| fallback_anchor(app));
-    trigger_at(app, x, y, false); // 热键路径:空选也弹,维持原行为
+    // 热键路径:空选也弹,维持原行为;无障碍读不到再 Ctrl+C 兜底。
+    trigger_at(app, x, y, false, CaptureMode::AccessibilityThenClipboard);
 }
 
 /// 在指定物理锚点弹工具条:捕获选中文本 + 写 pending + 确保窗口 + 通知前端。
 /// 快捷键路径用缓存坐标;划词路径用左键抬起坐标(锚点精确,不受延迟期间移动影响)。
+/// 取词先走无障碍(零副作用);`mode` 决定无障碍读不到时是否用剪贴板兜底(见 CaptureMode)。
 /// `require_text=true`(划词路径):取词为空(trim 后)直接返回不弹,挡住拖滚动条/窗口等
 /// "非选字拖动";`false`(热键路径):始终弹。
-pub fn trigger_at(app: &AppHandle, anchor_x: i32, anchor_y: i32, require_text: bool) {
-    // 让按键状态沉降:划词热键含修饰键,get-selected-text 在 Windows 合成 Ctrl+C 取值,
-    // 修饰键仍按住时取值会冲突。Released + settle 是 spike 验证过的可靠时机。
-    std::thread::sleep(Duration::from_millis(20));
-
-    let text = capture_selected_text();
+pub fn trigger_at(
+    app: &AppHandle,
+    anchor_x: i32,
+    anchor_y: i32,
+    require_text: bool,
+    mode: CaptureMode,
+) {
+    let text = match plan_capture(crate::selection_capture::focused_selection(), mode) {
+        CapturePlan::Use(text) => text,
+        CapturePlan::Clipboard => {
+            // 让按键状态沉降:快捷键含修饰键(默认 Alt+Q),get-selected-text 在 Windows
+            // 合成 Ctrl+C 取值,修饰键仍按住时会冲突。仅此剪贴板兜底分支需要 settle。
+            std::thread::sleep(Duration::from_millis(20));
+            capture_selected_text()
+        }
+        CapturePlan::Empty => String::new(),
+    };
     println!("[selection] captured: {text:?} @ ({anchor_x},{anchor_y})");
     if require_text && text.trim().is_empty() {
         return; // 划词路径没真正选到字 → 不弹
@@ -245,5 +287,36 @@ mod tests {
         let m = MonitorRect { x: 1920, y: 0, w: 1920, h: 1080 };
         assert_eq!(clamp_to_monitor(3800, 100, 300, 44, m), (3540, 100));
         assert_eq!(clamp_to_monitor(1950, 100, 300, 44, m), (1950, 100));
+    }
+
+    #[test]
+    fn plan_uses_accessibility_when_present() {
+        // 无障碍取到非空 → 直接用,与模式无关
+        assert_eq!(
+            plan_capture(Some("hi".into()), CaptureMode::AccessibilityOnly),
+            CapturePlan::Use("hi".into())
+        );
+        assert_eq!(
+            plan_capture(Some("hi".into()), CaptureMode::AccessibilityThenClipboard),
+            CapturePlan::Use("hi".into())
+        );
+    }
+
+    #[test]
+    fn plan_auto_path_never_uses_clipboard() {
+        // 划词自动路径:无障碍读不到 → 空串,绝不走剪贴板(不合成 Ctrl+C,挡住拖窗口 SIGINT)
+        assert_eq!(
+            plan_capture(None, CaptureMode::AccessibilityOnly),
+            CapturePlan::Empty
+        );
+    }
+
+    #[test]
+    fn plan_hotkey_path_falls_back_to_clipboard() {
+        // 快捷键路径:无障碍读不到 → 剪贴板兜底
+        assert_eq!(
+            plan_capture(None, CaptureMode::AccessibilityThenClipboard),
+            CapturePlan::Clipboard
+        );
     }
 }
