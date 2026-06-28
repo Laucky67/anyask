@@ -487,6 +487,15 @@ In the existing `#[cfg(test)] mod tests` in `src-tauri/src/quick_ask.rs`, add th
     }
 
     #[test]
+    fn prompt_cancel_script_sets_only_the_current_token() {
+        let script = prompt_cancel_script(9);
+
+        assert!(script.contains("window.__ANYASK_QUICK_PROMPT_TOKEN__ = \"anyask-prompt-9\";"));
+        assert!(!script.contains("const PROMPT"));
+        assert!(!script.contains("setInterval"));
+    }
+
+    #[test]
     fn prompt_injection_script_contains_expected_dom_strategy() {
         let script = prompt_injection_script("hello", 1);
 
@@ -510,7 +519,7 @@ Run:
 cargo test --manifest-path src-tauri/Cargo.toml prompt_
 ```
 
-Expected: FAIL because `prompt_token`, `prompt_generation_matches`, and `prompt_injection_script` do not exist yet.
+Expected: FAIL because `prompt_token`, `prompt_generation_matches`, `prompt_injection_script`, and `prompt_cancel_script` do not exist yet.
 
 - [ ] **Step 3: Implement script builder helpers**
 
@@ -608,6 +617,12 @@ fn prompt_injection_script(prompt: &str, generation: u64) -> String {
         .replace("__ANYASK_INTERVAL_MS__", &PROMPT_INJECTION_INTERVAL_MS.to_string())
         .replace("__ANYASK_TIMEOUT_MS__", &PROMPT_INJECTION_TIMEOUT_MS.to_string())
 }
+
+fn prompt_cancel_script(generation: u64) -> String {
+    let token_json = serde_json::to_string(&prompt_token(generation))
+        .unwrap_or_else(|_| "\"anyask-prompt-invalid\"".to_string());
+    format!("window.__ANYASK_QUICK_PROMPT_TOKEN__ = {token_json};")
+}
 ```
 
 - [ ] **Step 4: Run Rust prompt tests and verify they pass**
@@ -703,9 +718,9 @@ fn is_prompt_generation_current(app: &AppHandle, generation: u64) -> bool {
     prompt_generation_matches(current_prompt_generation(app), generation)
 }
 
-fn eval_prompt_script(app: &AppHandle, prompt: &str, generation: u64) -> Result<bool, String> {
+fn eval_script(app: &AppHandle, script: String, generation: u64, action: &str) -> Result<bool, String> {
     if !is_prompt_generation_current(app, generation) {
-        println!("[quick-ask] prompt injection skipped: generation={generation}, reason=stale");
+        println!("[quick-ask] prompt {action} skipped: generation={generation}, reason=stale");
         return Ok(true);
     }
 
@@ -713,10 +728,17 @@ fn eval_prompt_script(app: &AppHandle, prompt: &str, generation: u64) -> Result<
         return Ok(false);
     };
 
-    let script = prompt_injection_script(prompt, generation);
     wv.eval(&script).map_err(|e| e.to_string())?;
-    println!("[quick-ask] prompt injection scheduled: generation={generation}");
+    println!("[quick-ask] prompt {action} scheduled: generation={generation}");
     Ok(true)
+}
+
+fn eval_prompt_script(app: &AppHandle, prompt: &str, generation: u64) -> Result<bool, String> {
+    eval_script(app, prompt_injection_script(prompt, generation), generation, "injection")
+}
+
+fn eval_cancel_script(app: &AppHandle, generation: u64) -> Result<bool, String> {
+    eval_script(app, prompt_cancel_script(generation), generation, "cancellation")
 }
 
 async fn inject_prompt_when_ready(app: AppHandle, prompt: String, generation: u64) {
@@ -746,6 +768,34 @@ async fn inject_prompt_when_ready(app: AppHandle, prompt: String, generation: u6
         }
     }
 }
+
+async fn cancel_prompt_when_ready(app: AppHandle, generation: u64) {
+    for attempt in 0..=WEBVIEW_LOOKUP_MAX_ATTEMPTS {
+        if !is_prompt_generation_current(&app, generation) {
+            println!("[quick-ask] prompt cancellation skipped: generation={generation}, reason=stale");
+            return;
+        }
+
+        match eval_cancel_script(&app, generation) {
+            Ok(true) => return,
+            Ok(false) if attempt < WEBVIEW_LOOKUP_MAX_ATTEMPTS => {
+                tokio::time::sleep(Duration::from_millis(WEBVIEW_LOOKUP_RETRY_MS)).await;
+            }
+            Ok(false) => {
+                eprintln!(
+                    "[quick-ask] prompt cancellation skipped: generation={generation}, reason=ai_webview_missing"
+                );
+                return;
+            }
+            Err(error) => {
+                eprintln!(
+                    "[quick-ask] prompt cancellation failed: generation={generation}, error={error}"
+                );
+                return;
+            }
+        }
+    }
+}
 ```
 
 - [ ] **Step 5: Add deferred prompt entrypoint**
@@ -761,6 +811,7 @@ pub fn show_with_prompt_deferred(app: AppHandle, prompt: Option<String>) {
 
         let Some(prompt) = prompt_for_injection(prompt) else {
             println!("[quick-ask] prompt injection skipped: generation={generation}, reason=empty");
+            cancel_prompt_when_ready(app, generation).await;
             return;
         };
 

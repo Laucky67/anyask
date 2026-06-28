@@ -30,7 +30,7 @@ quick-ask 窗口由本地 React 壳 `quick-ask` 和外部 AI 子 WebView `quick-
 
 - 定义内置划词动作和默认提示词模板。
 - 根据动作、选中文本和用户语言构造最终 prompt。
-- 判断空文本时只打开 quick-ask，不填充输入框，并取消上一轮尚未完成的 prompt 注入。
+- 判断空文本时只打开 quick-ask，不填充输入框，并取消上一轮尚未完成的 prompt 注入，包括已经进入页面侧轮询的旧脚本。
 - 未来承接自定义按钮和自定义提示词模板。
 
 Rust 负责：
@@ -137,22 +137,22 @@ export async function showQuickAskWithPrompt(prompt: string | null): Promise<voi
 
 新增 deferred 注入入口：
 
-- `show_with_prompt_deferred(app, prompt)`：异步延迟 1ms 后调用显示逻辑；`prompt` 为非空文本时触发注入，`None` 或空白字符串只显示窗口并取消旧注入。
+- `show_with_prompt_deferred(app, prompt)`：异步延迟 1ms 后调用显示逻辑；`prompt` 为非空文本时触发填充脚本，`None` 或空白字符串只显示窗口并触发取消脚本。
 - 显示逻辑复用现有 `show(&app)`，不主动新建对话，不改变 reset policy。
-- 如果 prompt 为 `None` 或空白字符串，不执行注入，只显示窗口。
+- 如果 prompt 为 `None` 或空白字符串，不填入 prompt，但仍要向 `quick-ask-ai` 执行取消脚本，把 `window.__ANYASK_QUICK_PROMPT_TOKEN__` 设置为新的 token，令已经运行在页面里的旧轮询脚本失效。
 
 为连续触发增加 generation/token：
 
 - `AppState` 增加 `quick_ask_prompt_generation: AtomicU64`。
 - 每次 `show_with_prompt_deferred` 递增 generation。
 - 注入脚本闭包携带本次 generation。
-- 新一次触发后旧任务不会再注入。
+- 新一次触发后旧任务不会再注入；即使旧任务脚本已经在页面里开始轮询，新 token 也会让它停止。
 
 实现上可以在 Rust 侧用 generation 控制是否还应发起 `eval`；脚本内部也携带 token 防止页面侧旧定时器晚到。页面侧 token 可存在 `window.__ANYASK_QUICK_PROMPT_TOKEN__`。
 
 ### 注入脚本行为
 
-脚本执行在 `quick-ask-ai` 子 WebView 内：
+填充脚本执行在 `quick-ask-ai` 子 WebView 内：
 
 1. 保存本次 token 到 `window.__ANYASK_QUICK_PROMPT_TOKEN__`。
 2. 每 500ms 调用一次 `injectPrompt()`。
@@ -173,13 +173,21 @@ export async function showQuickAskWithPrompt(prompt: string | null): Promise<voi
 
 Rust 生成 JS 时必须通过 JSON 字符串序列化 prompt 和 token，避免换行、引号、反斜杠破坏脚本。
 
+取消脚本也执行在 `quick-ask-ai` 子 WebView 内，只设置新的页面 token：
+
+```js
+window.__ANYASK_QUICK_PROMPT_TOKEN__ = "<new token>";
+```
+
+这样空选文本、空白 prompt 或下一轮操作可以取消已经进入页面侧 `setInterval` 的旧填充脚本。
+
 ## 错误处理
 
 - `quick-ask-ai` 不存在：显示 quick-ask 后重试注入；如果仍不存在，只记录日志。
 - `eval` 返回错误：记录日志，不向前端抛错，不阻塞工具条隐藏。
 - 输入框非空：视为用户已有编辑内容，停止注入，不提示。
 - 10 秒内找不到输入框：停止轮询，不提示。
-- 空选文本：仍打开 quick-ask，不构造和注入 prompt，并取消旧注入。
+- 空选文本：仍打开 quick-ask，不构造和填入 prompt，并通过取消脚本取消旧注入。
 
 这些行为避免在划词工具条这种短交互里引入额外 UI 状态，同时保护用户已经输入的内容。
 
