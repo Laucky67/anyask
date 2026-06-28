@@ -1,0 +1,12 @@
+.img {
+  object-fit: cover;
+  display: block;
+}
+.letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  user-select: none;
+}

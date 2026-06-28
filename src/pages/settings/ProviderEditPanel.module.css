@@ -1,0 +1,136 @@
+.panel {
+  padding: 16px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.logoRow {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.logoBtn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.logoImg {
+  border-radius: 10px;
+  object-fit: cover;
+}
+.badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px dashed var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-muted);
+}
+.field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.label {
+  width: 80px;
+  font-size: 14px;
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+.input {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 15px;
+}
+.errorCenter {
+  color: var(--danger);
+  font-size: 13px;
+  text-align: center;
+  margin: 0;
+}
+.errorField {
+  color: var(--danger);
+  font-size: 13px;
+  margin: 0 0 0 92px;
+}
+.warnInline {
+  color: var(--warning);
+  font-size: 13px;
+}
+.errorGeneral {
+  color: var(--danger);
+  font-size: 13px;
+  margin: 0;
+}
+.footer {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.spacer {
+  flex: 1;
+}
+.btnDanger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+  font-size: 14px;
+  cursor: pointer;
+}
+.btnDanger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.btnPrimary {
+  padding: 8px 22px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  margin-right: 8px;
+}
+.btnPrimary:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.btnSecondary {
+  padding: 8px 22px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+}

@@ -1,0 +1,42 @@
+.card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  box-sizing: border-box;
+}
+button.card {
+  cursor: pointer;
+}
+button.card:hover {
+  background: var(--bg-elev);
+}
+.card[data-selected] {
+  border-color: var(--accent);
+  background: var(--bg-elev);
+}
+.sm {
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.lg {
+  padding: 16px 18px;
+  font-size: 18px;
+}
+.name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sm .name {
+  font-weight: 400;
+}
+.lg .name {
+  font-weight: 600;
+}

@@ -12,6 +12,7 @@ import {
   setQuickAskProvider,
   setQuickAskAiVisible,
 } from "../../lib/commands";
+import styles from "./QuickAskBar.module.css";
 
 const ICON = 18;
 
@@ -29,29 +30,14 @@ function BarButton({
   pressed?: boolean;
   active?: boolean;
 }) {
-  const [hover, setHover] = useState(false);
-  const color = active || hover ? "var(--fg)" : "var(--fg-muted)";
   return (
     <button
       type="button"
       aria-label={label}
       aria-pressed={pressed}
       onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 28,
-        height: 28,
-        padding: 0,
-        border: "none",
-        borderRadius: 6,
-        background: hover ? "var(--bg-elev)" : "transparent",
-        color,
-        cursor: "pointer",
-      }}
+      className={styles.barBtn}
+      data-active={active || undefined}
     >
       {children}
     </button>
@@ -153,19 +139,7 @@ export function QuickAskBar() {
     <>
       {/* 顶栏根作为拖动区；Tauri 2 的 data-tauri-drag-region 不向子元素传播，
           故中间再放一个带该属性的 spacer 覆盖大片空白；按钮不带该属性（保持可点）。*/}
-      <div
-        data-tauri-drag-region
-        style={{
-          height: 40,
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "0 10px",
-          background: "var(--bg)",
-          borderBottom: "1px solid var(--border)",
-          userSelect: "none",
-        }}
-      >
+      <div data-tauri-drag-region className={styles.bar}>
         <BarButton label={t("quickAsk.hide")} onClick={() => void hideQuickAsk()}>
           <Minus size={ICON} />
         </BarButton>
@@ -178,7 +152,7 @@ export function QuickAskBar() {
           <Pin size={ICON} fill={pinned ? "currentColor" : "none"} />
         </BarButton>
 
-        <div data-tauri-drag-region style={{ flex: 1, alignSelf: "stretch" }} />
+        <div data-tauri-drag-region className={styles.spacer} />
 
         <BarButton label={t("quickAsk.newChat")} onClick={() => void quickAskNewChat()}>
           <SquarePen size={ICON} />
@@ -191,18 +165,8 @@ export function QuickAskBar() {
           aria-haspopup="true"
           aria-expanded={open}
           onClick={() => (open ? void closePanel() : openPanel())}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            height: 28,
-            padding: "0 6px",
-            border: "none",
-            borderRadius: 6,
-            background: open ? "var(--bg-elev)" : "transparent",
-            color: "var(--fg)",
-            cursor: "pointer",
-          }}
+          className={styles.aiBtn}
+          data-open={open || undefined}
         >
           {current && <ProviderLogo name={current.name} logo={current.logo} size={20} />}
           <ChevronDown size={14} color="var(--fg-muted)" />
@@ -216,19 +180,7 @@ export function QuickAskBar() {
           onClick={(e) => {
             if (e.target === e.currentTarget) void closePanel();
           }}
-          style={{
-            position: "fixed",
-            top: 40,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "var(--bg)",
-            padding: 12,
-            overflow: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
+          className={styles.panel}
         >
           {enabled.map((p) => (
             <ProviderCard

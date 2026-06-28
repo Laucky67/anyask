@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useT } from "../../i18n";
 import {
@@ -14,6 +14,7 @@ import {
   copySelection,
   showQuickAsk,
 } from "../../lib/commands";
+import styles from "./SelectionToolbar.module.css";
 
 const SHOW_EVENT = "selection-toolbar:show";
 
@@ -27,28 +28,8 @@ function ToolbarButton({
   onClick: () => void;
   children: ReactNode;
 }) {
-  const [hover, setHover] = useState(false);
   return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        height: 28,
-        padding: "0 8px",
-        border: "none",
-        borderRadius: 6,
-        background: hover ? "var(--bg-elev)" : "transparent",
-        color: hover ? "var(--fg)" : "var(--fg-muted)",
-        cursor: "pointer",
-        whiteSpace: "nowrap",
-      }}
-    >
+    <button type="button" aria-label={label} onClick={onClick} className={styles.toolBtn}>
       {children}
     </button>
   );
@@ -106,27 +87,14 @@ export function SelectionToolbar() {
   return (
     // 窗口尺寸 = 本药丸尺寸（place_and_show 按实测 rect 设窗），不留任何透明边距，
     // 故不加外层 padding，也不用 boxShadow（会被窗口边界裁掉）。圆角外的四角为透明窗体。
-    <div
-      ref={outerRef}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 2,
-        height: 36,
-        padding: "0 4px",
-        background: "var(--bg)",
-        border: "1px solid var(--border)",
-        borderRadius: 10,
-        whiteSpace: "nowrap",
-      }}
-    >
+    <div ref={outerRef} className={styles.pill}>
       {actions.map((a) => {
         const Icon = ICON_REGISTRY[a.icon];
         const label = a.labelKey ? t(a.labelKey) : a.label ?? "";
         return (
           <ToolbarButton key={a.id} label={label} onClick={() => runAction(a)}>
             {Icon ? <Icon size={16} /> : null}
-            <span style={{ fontSize: 13 }}>{label}</span>
+            <span className={styles.label}>{label}</span>
           </ToolbarButton>
         );
       })}

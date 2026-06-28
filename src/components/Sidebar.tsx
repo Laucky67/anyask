@@ -2,6 +2,7 @@ import { RotateCw, Settings } from "lucide-react";
 import type { AiProvider } from "../state/types";
 import { ProviderLogo } from "./ProviderLogo";
 import { useT } from "../i18n";
+import styles from "./Sidebar.module.css";
 
 interface Props {
   providers: AiProvider[];
@@ -15,41 +16,23 @@ interface Props {
 export function Sidebar({ providers, activeId, settingsActive, onSelect, onOpenSettings, onRefresh }: Props) {
   const t = useT();
   return (
-    <nav
-      style={{
-        width: "var(--sidebar-w)",
-        height: "100%",
-        background: "var(--sidebar-bg)",
-        borderRight: "1px solid var(--border)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        padding: "12px 0",
-        gap: 12,
-      }}
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
+    <nav className={styles.nav}>
+      <div className={styles.list}>
         {providers.map((p) => {
           const active = !settingsActive && activeId === p.id;
           return (
-          <button
-            key={p.id}
-            type="button"
-            aria-label={p.name}
-            title={p.name}
-            onClick={() => onSelect(p.id)}
-            style={{
-              border: "none",
-              background: active ? "var(--border)" : "transparent",
-              cursor: "pointer",
-              padding: 8,
-              borderRadius: 12,
-              transition: `background 0.2s var(--ease-out-expo)`,
-            }}
-          >
-            <ProviderLogo name={p.name} logo={p.logo} size={24} />
-          </button>
-        );
+            <button
+              key={p.id}
+              type="button"
+              aria-label={p.name}
+              title={p.name}
+              onClick={() => onSelect(p.id)}
+              className={styles.item}
+              data-active={active || undefined}
+            >
+              <ProviderLogo name={p.name} logo={p.logo} size={24} />
+            </button>
+          );
         })}
       </div>
       <button
@@ -57,7 +40,7 @@ export function Sidebar({ providers, activeId, settingsActive, onSelect, onOpenS
         aria-label={t("sidebar.refresh")}
         title={t("sidebar.refresh")}
         onClick={onRefresh}
-        style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--fg-muted)", display: "flex", padding: 4 }}
+        className={styles.iconBtn}
       >
         <RotateCw size={22} />
       </button>
@@ -66,7 +49,8 @@ export function Sidebar({ providers, activeId, settingsActive, onSelect, onOpenS
         aria-label={t("sidebar.settings")}
         title={t("sidebar.settings")}
         onClick={onOpenSettings}
-        style={{ border: "none", background: "transparent", cursor: "pointer", color: settingsActive ? "var(--accent)" : "var(--fg-muted)", display: "flex", padding: 4 }}
+        className={styles.iconBtn}
+        data-active={settingsActive || undefined}
       >
         <Settings size={22} />
       </button>

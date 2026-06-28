@@ -1,4 +1,5 @@
 import { forwardRef, type ReactNode } from "react";
+import styles from "./ContentArea.module.css";
 
 interface Props {
   showSettings: boolean;
@@ -11,21 +12,12 @@ export const ContentArea = forwardRef<HTMLDivElement, Props>(function ContentAre
   ref
 ) {
   return (
-    <div style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden" }}>
+    <div className={styles.area}>
       {showSettings ? (
-        <div style={{ height: "100%", overflow: "auto" }}>{settings}</div>
+        <div className={styles.settings}>{settings}</div>
       ) : (
-        <div
-          ref={ref}
-          data-content-area
-          data-testid="content-area"
-          style={{ height: "100%" }}
-        >
-          {emptyHint ? (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-muted)" }}>
-              {emptyHint}
-            </div>
-          ) : null}
+        <div ref={ref} data-content-area data-testid="content-area" className={styles.content}>
+          {emptyHint ? <div className={styles.empty}>{emptyHint}</div> : null}
         </div>
       )}
     </div>

@@ -3,11 +3,13 @@ import { Plus } from "lucide-react";
 import { useSettings } from "../../state/SettingsContext";
 import { useT } from "../../i18n";
 import { ProviderCard } from "../../components/ProviderCard";
+import { SettingsLayout } from "../../components/SettingsLayout";
 import { ProviderEditPanel } from "./ProviderEditPanel";
 import { validateProvider, canDisableProvider } from "../../lib/providerValidation";
 import { logoActionFromDraft } from "../../lib/logo";
 import { addProvider, saveProvider, deleteProvider } from "../../lib/commands";
 import type { AiProvider, DraftProvider, Settings, ValidationErrors } from "../../state/types";
+import styles from "./AiConfigSettings.module.css";
 
 const TEMP_PREFIX = "temp-";
 
@@ -106,17 +108,12 @@ export function AiConfigSettings() {
     }
   };
 
-  const cardWrap: React.CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-  };
-
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 10, maxWidth: 820, margin: "0 auto", width: "100%" }}>
+    <SettingsLayout gap={10} padding={24}>
       {settings.providers.map((p) => {
         const open = openId === p.id;
         return (
-          <div key={p.id} style={cardWrap}>
+          <div key={p.id} className={styles.cardWrap}>
             <ProviderCard
               name={p.name}
               logo={p.logo}
@@ -128,14 +125,7 @@ export function AiConfigSettings() {
                 else openCard(p);
               }}
             />
-            <div
-              style={{
-                overflow: "hidden",
-                maxHeight: open ? "600px" : "0",
-                opacity: open ? 1 : 0,
-                transition: `max-height 0.35s var(--ease-out-expo), opacity 0.3s var(--ease-out-expo)`,
-              }}
-            >
+            <div className={styles.panel} data-open={open || undefined}>
               {draft && openId === p.id && (
                 <ProviderEditPanel
                   draft={draft}
@@ -155,16 +145,9 @@ export function AiConfigSettings() {
       })}
 
       {tempProvider && draft && openId === tempProvider.id && (
-        <div style={cardWrap}>
+        <div className={styles.cardWrap}>
           <ProviderCard name={draft.name} logo={draft.logo} arrow="up" size="lg" />
-          <div
-            style={{
-              overflow: "hidden",
-              maxHeight: "600px",
-              opacity: 1,
-              transition: `max-height 0.35s var(--ease-out-expo), opacity 0.3s var(--ease-out-expo)`,
-            }}
-          >
+          <div className={styles.panel} data-open>
             <ProviderEditPanel
               draft={draft}
               errors={errors}
@@ -181,43 +164,11 @@ export function AiConfigSettings() {
       )}
 
       {!tempProvider && (
-        <button
-          type="button"
-          aria-label={t("ai.add")}
-          onClick={handleAdd}
-          style={{
-            width: "100%",
-            height: 56,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            border: "2px dashed var(--border)",
-            borderRadius: "var(--radius-md)",
-            background: "transparent",
-            color: "var(--fg-muted)",
-            cursor: "pointer",
-            fontSize: 15,
-            fontWeight: 500,
-            transition: `border-color 0.2s var(--ease-out-expo), color 0.2s var(--ease-out-expo), transform 0.15s var(--ease-out-expo)`,
-          }}
-          onMouseEnter={(e) => {
-            const el = e.currentTarget as HTMLElement;
-            el.style.borderColor = "var(--accent)";
-            el.style.color = "var(--accent)";
-            el.style.transform = "scale(1.01)";
-          }}
-          onMouseLeave={(e) => {
-            const el = e.currentTarget as HTMLElement;
-            el.style.borderColor = "var(--border)";
-            el.style.color = "var(--fg-muted)";
-            el.style.transform = "scale(1)";
-          }}
-        >
+        <button type="button" aria-label={t("ai.add")} onClick={handleAdd} className={styles.addBtn}>
           <Plus size={22} />
           {t("ai.add")}
         </button>
       )}
-    </div>
+    </SettingsLayout>
   );
 }

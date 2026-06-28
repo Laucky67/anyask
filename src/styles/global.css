@@ -6,6 +6,11 @@
   --border: #e0e0e3;
   --accent: #2563eb;
   --accent-muted: #eff3ff;
+  --accent-rgb: 37, 99, 235;
+  --danger: #e0533a;
+  --danger-soft: #e05260;
+  --danger-border: rgba(224, 82, 96, 0.25);
+  --warning: #e0a23a;
   --sidebar-bg: #fafafa;
   --sidebar-w: 52px;
   --radius-sm: 6px;
@@ -39,3 +44,10 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+
+/*
+ * 组件动画的关键帧定义在各自的 *.module.css 内(每个仅被一个组件使用):
+ * selectMenuIn → SelectField, settingsFadeIn → SettingsPage, hotkeyPulse → HotkeySettings。
+ * CSS Modules 会把 @keyframes 与其 animation 引用一起作用域化,放在全局这里反而会令引用名对不上而失效。
+ */
+

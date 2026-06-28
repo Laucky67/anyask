@@ -1,0 +1,39 @@
+.nav {
+  width: var(--sidebar-w);
+  height: 100%;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 12px;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.item {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 12px;
+  transition: background 0.2s var(--ease-out-expo);
+}
+.item[data-active] {
+  background: var(--border);
+}
+.iconBtn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--fg-muted);
+  display: flex;
+  padding: 4px;
+}
+.iconBtn[data-active] {
+  color: var(--accent);
+}

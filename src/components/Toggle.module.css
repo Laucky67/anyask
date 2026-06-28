@@ -1,0 +1,32 @@
+.toggle {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  background: var(--border);
+  transition: background 0.25s var(--ease-out-expo);
+  display: inline-flex;
+  justify-content: flex-start;
+  align-items: center;
+}
+.toggle[aria-checked="true"] {
+  background: var(--accent);
+  justify-content: flex-end;
+}
+.toggle[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.knob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.25s var(--ease-out-expo);
+}
+.toggle[aria-checked="true"] .knob {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}

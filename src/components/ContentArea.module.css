@@ -1,0 +1,20 @@
+.area {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.settings {
+  height: 100%;
+  overflow: auto;
+}
+.content {
+  height: 100%;
+}
+.empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-muted);
+}

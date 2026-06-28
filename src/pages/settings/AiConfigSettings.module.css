@@ -1,0 +1,35 @@
+.cardWrap {
+  display: flex;
+  flex-direction: column;
+}
+.panel {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.35s var(--ease-out-expo), opacity 0.3s var(--ease-out-expo);
+}
+.panel[data-open] {
+  max-height: 600px;
+  opacity: 1;
+}
+.addBtn {
+  width: 100%;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  transition: border-color 0.2s var(--ease-out-expo), color 0.2s var(--ease-out-expo), transform 0.15s var(--ease-out-expo);
+}
+.addBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(1.01);
+}

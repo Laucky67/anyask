@@ -1,7 +1,7 @@
-import { useState, type CSSProperties } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { ProviderLogo } from "./ProviderLogo";
 import type { ProviderLogo as ProviderLogoType } from "../state/types";
+import styles from "./ProviderCard.module.css";
 
 interface Props {
   name: string;
@@ -20,47 +20,27 @@ interface Props {
 /**
  * 可复用的 provider 卡片：圆角矩形，左 Logo + 右 Name。
  * 等宽卡片下各卡 logo 左对齐、文字右缘对齐。零业务依赖，可在选择器/设置页复用。
+ * 选中态(data-selected)= accent 边框 + 浅底；hover(仅可点击态)= 浅底。
  */
 export function ProviderCard({ name, logo, selected, onClick, width = "100%", logoSize, arrow, size = "sm" }: Props) {
-  const [hover, setHover] = useState(false);
-  const active = selected || hover;
-  const dims =
-    size === "lg"
-      ? { pad: "16px 18px", font: 18, weight: 600, logo: 24 }
-      : { pad: "8px 12px", font: 14, weight: 400, logo: 28 };
-  const ls = logoSize ?? dims.logo;
-
-  const style: CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    width,
-    padding: dims.pad,
-    border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
-    borderRadius: 10,
-    background: active ? "var(--bg-elev)" : "transparent",
-    color: "var(--fg)",
-    cursor: onClick ? "pointer" : "default",
-    textAlign: "left",
-    boxSizing: "border-box",
-    fontSize: dims.font,
-  };
+  const ls = logoSize ?? (size === "lg" ? 24 : 28);
+  const className = `${styles.card} ${size === "lg" ? styles.lg : styles.sm}`;
 
   const content = (
     <>
       <ProviderLogo name={name} logo={logo} size={ls} />
-      <span
-        style={{ flex: 1, textAlign: "left", fontWeight: dims.weight, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-      >
-        {name}
-      </span>
+      <span className={styles.name}>{name}</span>
       {arrow === "up" && <ChevronUp size={18} color="var(--fg-muted)" />}
       {arrow === "down" && <ChevronDown size={18} color="var(--fg-muted)" />}
     </>
   );
 
   if (!onClick) {
-    return <div style={style}>{content}</div>;
+    return (
+      <div className={className} data-selected={selected || undefined} style={{ width }}>
+        {content}
+      </div>
+    );
   }
   return (
     <button
@@ -68,9 +48,9 @@ export function ProviderCard({ name, logo, selected, onClick, width = "100%", lo
       aria-label={name}
       aria-pressed={selected}
       onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={style}
+      className={className}
+      data-selected={selected || undefined}
+      style={{ width }}
     >
       {content}
     </button>

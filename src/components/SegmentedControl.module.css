@@ -1,0 +1,31 @@
+.group {
+  display: inline-flex;
+  background: var(--bg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  padding: 3px;
+  gap: 2px;
+}
+.segment {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 400;
+  transition: background 0.2s var(--ease-out-expo), color 0.2s var(--ease-out-expo);
+}
+.segment:hover {
+  color: var(--fg);
+}
+/* 激活态放最后,与 :hover 同特异性时压过,使选中项 hover 仍保持高亮 */
+.segment[data-active] {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}

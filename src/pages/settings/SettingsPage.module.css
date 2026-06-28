@@ -1,0 +1,74 @@
+.page {
+  display: flex;
+  height: 100%;
+}
+.nav {
+  width: 200px;
+  border-right: 1px solid var(--border);
+  padding: 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg);
+}
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 14px 10px;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 11px 16px;
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--fg-muted);
+  font-weight: 400;
+  font-size: 15px;
+  position: relative;
+  transition: background 0.2s var(--ease-out-expo), color 0.2s var(--ease-out-expo);
+}
+.tab:hover {
+  background: var(--bg-elev);
+}
+.tab[data-active] {
+  background: var(--bg-elev);
+  color: var(--fg);
+  font-weight: 600;
+}
+.accent {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+.icon {
+  display: flex;
+  align-items: center;
+  opacity: 0.55;
+}
+.tab[data-active] .icon {
+  opacity: 1;
+}
+.content {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg);
+}
+.fade {
+  animation: settingsFadeIn 0.35s var(--ease-out-expo) both;
+}
+
+@keyframes settingsFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
