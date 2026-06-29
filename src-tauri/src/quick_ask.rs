@@ -11,7 +11,7 @@ use crate::state::AppState;
 const LABEL: &str = "quick-ask";
 const AI_LABEL: &str = "quick-ask-ai"; // 顶栏下方承载 AI 站点的子 webview
 const WIDTH: f64 = 400.0;
-const HEIGHT: f64 = 600.0;
+const HEIGHT: f64 = 620.0;
 const TOPBAR_HEIGHT: f64 = 40.0; // 必须与前端 QuickAskBar 高度一致
 const WEBVIEW_LOOKUP_RETRY_MS: u64 = 50;
 const WEBVIEW_LOOKUP_MAX_ATTEMPTS: u8 = 20;
