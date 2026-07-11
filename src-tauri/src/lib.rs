@@ -16,6 +16,8 @@ use tauri::{Manager, WindowEvent};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Windows 上默认设备事件过滤可能影响 rdev 的键盘钩子；保留原始输入事件。
+        .device_event_filter(tauri::DeviceEventFilter::Never)
         .manage(state::AppState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())

@@ -1,4 +1,4 @@
-//! 全局鼠标钩子(rdev):缓存光标坐标、把左键按下/抬起送入处理线程做划词门控。
+//! 全局输入钩子(rdev):缓存光标坐标、把鼠标/键盘事件送入处理线程做划词门控与注销。
 //! 钩子回调必须极轻——只写原子 / 发 channel,绝不在回调里碰窗口或 get-selected-text。
 
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
@@ -14,7 +14,7 @@ const UNSET: i32 = i32::MIN;
 static LAST_X: AtomicI32 = AtomicI32::new(UNSET);
 static LAST_Y: AtomicI32 = AtomicI32::new(UNSET);
 
-/// 输入代号:每次左键按下自增,用于作废延迟取词任务(见 schedule_capture)。
+/// 输入代号:每次左键按下或任意键盘按下自增,用于作废延迟取词任务(见 schedule_capture)。
 static INPUT_GEN: AtomicU64 = AtomicU64::new(0);
 
 /// 由缓存的 (x,y) 还原光标位置;任一轴为哨兵视作未知。纯函数,便于单测。
@@ -78,18 +78,24 @@ fn classify_release(
     }
 }
 
+/// 延迟取词任务醒来后是否仍可执行。任一新输入都会改变 generation，使旧选区失效。
+fn should_capture(gen_at_schedule: u64, gen_now: u64, enabled: bool, visible: bool) -> bool {
+    gen_now == gen_at_schedule && enabled && !visible
+}
+
 /// 取词延迟:抬起后等选区/剪贴板沉降,再调 get-selected-text。
 const DELAY_MS: u64 = 80;
 
-/// 送往处理线程的左键事件(已带缓存坐标)。
-enum MouseMsg {
+/// 送往处理线程的全局输入事件。鼠标事件带缓存坐标；键盘按下无需按键详情。
+enum InputMsg {
     Press { x: i32, y: i32 },
     Release { x: i32, y: i32 },
+    KeyPress,
 }
 
-/// 在 setup 中调用一次:起 rdev 钩子线程 + 处理线程。
+/// 在 setup 中调用一次:起 rdev 全局输入钩子线程 + 处理线程。
 pub fn start(app: AppHandle) {
-    let (tx, rx) = mpsc::channel::<MouseMsg>();
+    let (tx, rx) = mpsc::channel::<InputMsg>();
 
     // 钩子线程:rdev::listen 阻塞,独占一条线程;回调极轻(只写原子 / 发 channel)。
     std::thread::spawn(move || {
@@ -102,12 +108,17 @@ pub fn start(app: AppHandle) {
                 let x = LAST_X.load(Ordering::Relaxed);
                 let y = LAST_Y.load(Ordering::Relaxed);
                 INPUT_GEN.fetch_add(1, Ordering::SeqCst); // 作废延迟任务
-                let _ = tx.send(MouseMsg::Press { x, y });
+                let _ = tx.send(InputMsg::Press { x, y });
             }
             rdev::EventType::ButtonRelease(rdev::Button::Left) => {
                 let x = LAST_X.load(Ordering::Relaxed);
                 let y = LAST_Y.load(Ordering::Relaxed);
-                let _ = tx.send(MouseMsg::Release { x, y });
+                let _ = tx.send(InputMsg::Release { x, y });
+            }
+            rdev::EventType::KeyPress(_) => {
+                // 立即作废延迟任务，避免处理线程尚未消费消息时旧选区已弹出。
+                INPUT_GEN.fetch_add(1, Ordering::SeqCst);
+                let _ = tx.send(InputMsg::KeyPress);
             }
             _ => {}
         };
@@ -121,12 +132,12 @@ pub fn start(app: AppHandle) {
 }
 
 /// 处理线程主循环:维护配对的按下状态,按门控判定动作。
-fn process_loop(app: AppHandle, rx: mpsc::Receiver<MouseMsg>) {
+fn process_loop(app: AppHandle, rx: mpsc::Receiver<InputMsg>) {
     let mut press: Option<(i32, i32, Instant)> = None;
     for msg in rx {
         let state = app.state::<AppState>();
         match msg {
-            MouseMsg::Press { x, y } => {
+            InputMsg::Press { x, y } => {
                 let rect = *state.toolbar_rect.lock().unwrap();
                 match rect {
                     Some(r) if point_in_rect(x, y, r) => {
@@ -143,7 +154,7 @@ fn process_loop(app: AppHandle, rx: mpsc::Receiver<MouseMsg>) {
                     }
                 }
             }
-            MouseMsg::Release { x, y } => {
+            InputMsg::Release { x, y } => {
                 let taken = press.take();
                 let had_press = taken.is_some();
                 let enabled = state.selection_autopopup_enabled.load(Ordering::SeqCst);
@@ -161,6 +172,13 @@ fn process_loop(app: AppHandle, rx: mpsc::Receiver<MouseMsg>) {
                     schedule_capture(app.clone(), x, y);
                 }
             }
+            InputMsg::KeyPress => {
+                // 键盘操作应注销工具条，并中断可能尚未抬起的鼠标候选拖选。
+                press = None;
+                if state.toolbar_rect.lock().unwrap().is_some() {
+                    let _ = crate::selection_toolbar::hide(&app);
+                }
+            }
         }
     }
 }
@@ -174,7 +192,7 @@ fn schedule_capture(app: AppHandle, x: i32, y: i32) {
         let gen_now = INPUT_GEN.load(Ordering::SeqCst);
         let enabled = state.selection_autopopup_enabled.load(Ordering::SeqCst);
         let visible = state.toolbar_rect.lock().unwrap().is_some();
-        if gen_now != gen_at_schedule || !enabled || visible {
+        if !should_capture(gen_at_schedule, gen_now, enabled, visible) {
             return; // 延迟窗口内发生新输入 / 关开关 / 已可见 → 丢弃
         }
         // 划词自动路径:只读无障碍,读不到就不弹,绝不合成 Ctrl+C(挡住拖窗口误触 SIGINT)。
@@ -234,5 +252,17 @@ mod tests {
     fn valid_drag_triggers() {
         assert_eq!(classify_release(true, true, false, 6, 80), ReleaseAction::Trigger); // 边界值
         assert_eq!(classify_release(true, true, false, 300, 1200), ReleaseAction::Trigger);
+    }
+
+    #[test]
+    fn delayed_capture_is_invalidated_by_new_keyboard_input() {
+        assert!(!should_capture(41, 42, true, false));
+    }
+
+    #[test]
+    fn delayed_capture_requires_unchanged_generation_enabled_and_hidden_toolbar() {
+        assert!(should_capture(42, 42, true, false));
+        assert!(!should_capture(42, 42, false, false));
+        assert!(!should_capture(42, 42, true, true));
     }
 }
