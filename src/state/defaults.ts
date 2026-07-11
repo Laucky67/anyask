@@ -11,7 +11,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   keepStateOnSwitch: true,
   providers: DEFAULT_PROVIDERS,
-  hotkeys: { quickAsk: "Shift+Z", showMain: "CommandOrControl+Alt+Space", selectionToolbar: "Alt+Q" },
+  hotkeys: { quickAsk: "CommandOrControl+Tab", showMain: "CommandOrControl+Alt+Space", selectionToolbar: "Alt+Q" },
   quickAskProviderId: "chatgpt",
   quickAskResetPolicy: "after5m",
   selectionAutoPopup: true,

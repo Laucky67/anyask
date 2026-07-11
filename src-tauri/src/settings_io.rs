@@ -2,8 +2,8 @@ use serde::Deserialize;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
-const DEFAULT_QUICK_ASK: &str = "CommandOrControl+Space";
-const DEFAULT_SHOW_MAIN: &str = "CommandOrControl+Shift+Space";
+const DEFAULT_QUICK_ASK: &str = "CommandOrControl+Tab";
+const DEFAULT_SHOW_MAIN: &str = "CommandOrControl+Alt+Space";
 const DEFAULT_SELECTION_TOOLBAR: &str = "Alt+Q";
 const DEFAULT_QUICK_ASK_PROVIDER: &str = "chatgpt";
 
