@@ -9,10 +9,10 @@
   text-align: left;
   box-sizing: border-box;
 }
-button.card {
+.card[data-interactive] {
   cursor: pointer;
 }
-button.card:hover {
+.card[data-interactive]:hover {
   background: var(--bg-elev);
 }
 .card[data-selected] {
@@ -39,4 +39,18 @@ button.card:hover {
 }
 .lg .name {
   font-weight: 600;
+}
+.cardMain {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }

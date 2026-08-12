@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { Plus } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Plus } from "lucide-react";
 import { useSettings } from "../../state/SettingsContext";
 import { useT } from "../../i18n";
 import { ProviderCard } from "../../components/ProviderCard";
@@ -13,6 +16,55 @@ import styles from "./AiConfigSettings.module.css";
 
 const TEMP_PREFIX = "temp-";
 
+interface SortableProviderCardProps {
+  provider: AiProvider;
+  open: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  dragLabel: string;
+  children: ReactNode;
+}
+
+function SortableProviderCard({ provider, open, disabled, onClick, dragLabel, children }: SortableProviderCardProps) {
+  const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: provider.id,
+    disabled,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={styles.cardWrap}
+      data-provider-id={provider.id}
+      data-dragging={isDragging || undefined}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
+      <ProviderCard
+        name={provider.name}
+        logo={provider.logo}
+        arrow={open ? "up" : "down"}
+        size="lg"
+        onClick={onClick}
+        dragHandle={
+          <button
+            ref={setActivatorNodeRef}
+            type="button"
+            className={styles.dragHandle}
+            aria-label={dragLabel}
+            title={dragLabel}
+            disabled={disabled}
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical size={20} />
+          </button>
+        }
+      />
+      {children}
+    </div>
+  );
+}
+
 export function AiConfigSettings() {
   const { settings, updateSettings } = useSettings();
   const t = useT();
@@ -21,8 +73,22 @@ export function AiConfigSettings() {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [tempProvider, setTempProvider] = useState<DraftProvider | null>(null);
   const [saving, setSaving] = useState(false);
+  const [orderedProviders, setOrderedProviders] = useState<AiProvider[]>(settings.providers);
+  const [orderDirty, setOrderDirty] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [orderSaveFailed, setOrderSaveFailed] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const isTemp = (id: string) => id.startsWith(TEMP_PREFIX);
+
+  // 未编辑排序时始终跟随 settings，确保另一个窗口保存的顺序会即时反映。
+  // 本地有未保存排序时保持当前预览，直到用户明确保存或取消。
+  useEffect(() => {
+    if (!orderDirty) setOrderedProviders(settings.providers);
+  }, [settings.providers, orderDirty]);
 
   const closeCard = () => {
     setOpenId(null);
@@ -32,13 +98,14 @@ export function AiConfigSettings() {
   };
 
   const openCard = (p: AiProvider) => {
-    if (tempProvider) return;
+    if (tempProvider || orderDirty) return;
     setOpenId(p.id);
     setDraft({ ...p });
     setErrors({});
   };
 
   const handleAdd = () => {
+    if (orderDirty) return;
     const id = `${TEMP_PREFIX}${Date.now()}`;
     const temp: DraftProvider = {
       id,
@@ -108,41 +175,90 @@ export function AiConfigSettings() {
     }
   };
 
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    setOrderedProviders((providers) => {
+      const oldIndex = providers.findIndex((p) => p.id === active.id);
+      const newIndex = providers.findIndex((p) => p.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return providers;
+      setOrderDirty(true);
+      setOrderSaveFailed(false);
+      return arrayMove(providers, oldIndex, newIndex);
+    });
+  };
+
+  const saveOrder = async () => {
+    setSavingOrder(true);
+    setOrderSaveFailed(false);
+    try {
+      await updateSettings({ providers: orderedProviders });
+      setOrderDirty(false);
+    } catch {
+      setOrderSaveFailed(true);
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const cancelOrder = () => {
+    setOrderedProviders(settings.providers);
+    setOrderDirty(false);
+    setOrderSaveFailed(false);
+  };
+
+  const sortDisabled = Boolean(openId || tempProvider || saving || savingOrder);
+
   return (
     <SettingsLayout gap={10} padding={24}>
-      {settings.providers.map((p) => {
-        const open = openId === p.id;
-        return (
-          <div key={p.id} className={styles.cardWrap}>
-            <ProviderCard
-              name={p.name}
-              logo={p.logo}
-              arrow={open ? "up" : "down"}
-              size="lg"
-              onClick={() => {
-                if (tempProvider) return;
-                if (open) closeCard();
-                else openCard(p);
-              }}
-            />
-            <div className={styles.panel} data-open={open || undefined}>
-              {draft && openId === p.id && (
-                <ProviderEditPanel
-                  draft={draft}
-                  errors={errors}
-                  isTemp={false}
-                  canDisable={canDisableProvider(settings.providers)}
-                  saving={saving}
-                  onChange={changeDraft}
-                  onSave={() => void save()}
-                  onCancel={closeCard}
-                  onDelete={() => void remove()}
-                />
-              )}
-            </div>
-          </div>
-        );
-      })}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={orderedProviders.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+          {orderedProviders.map((p) => {
+            const open = openId === p.id;
+            return (
+              <SortableProviderCard
+                key={p.id}
+                provider={p}
+                open={open}
+                disabled={sortDisabled}
+                dragLabel={t("ai.dragHandle").replace("{name}", p.name)}
+                onClick={() => {
+                  if (tempProvider || orderDirty) return;
+                  if (open) closeCard();
+                  else openCard(p);
+                }}
+              >
+                <div className={styles.panel} data-open={open || undefined}>
+                  {draft && openId === p.id && (
+                    <ProviderEditPanel
+                      draft={draft}
+                      errors={errors}
+                      isTemp={false}
+                      canDisable={canDisableProvider(settings.providers)}
+                      saving={saving}
+                      onChange={changeDraft}
+                      onSave={() => void save()}
+                      onCancel={closeCard}
+                      onDelete={() => void remove()}
+                    />
+                  )}
+                </div>
+              </SortableProviderCard>
+            );
+          })}
+        </SortableContext>
+      </DndContext>
+
+      {orderDirty && (
+        <div className={styles.orderActions}>
+          {orderSaveFailed && <p className={styles.orderError}>{t("errors.saveFailed")}</p>}
+          <button type="button" onClick={cancelOrder} className={styles.cancelOrderBtn} disabled={savingOrder}>
+            {t("ai.cancelOrder")}
+          </button>
+          <button type="button" onClick={() => void saveOrder()} className={styles.saveOrderBtn} disabled={savingOrder}>
+            {t("ai.saveOrder")}
+          </button>
+        </div>
+      )}
 
       {tempProvider && draft && openId === tempProvider.id && (
         <div className={styles.cardWrap}>
@@ -164,7 +280,7 @@ export function AiConfigSettings() {
       )}
 
       {!tempProvider && (
-        <button type="button" aria-label={t("ai.add")} onClick={handleAdd} className={styles.addBtn}>
+        <button type="button" aria-label={t("ai.add")} onClick={handleAdd} className={styles.addBtn} disabled={orderDirty}>
           <Plus size={22} />
           {t("ai.add")}
         </button>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DEFAULT_SETTINGS } from "../../state/defaults";
 
@@ -111,6 +111,22 @@ describe("QuickAskBar", () => {
     // DEFAULT_SETTINGS 三个 provider 均 enabled，应各出现一张卡片
     expect(await screen.findByRole("button", { name: "Claude" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Google AI Studio" })).toBeInTheDocument();
+  });
+
+  it("lists enabled providers in the persisted provider order", async () => {
+    const [chatgpt, claude, aistudio] = DEFAULT_SETTINGS.providers;
+    settingsState.value = {
+      ...DEFAULT_SETTINGS,
+      providers: [claude, { ...aistudio, enabled: false }, chatgpt],
+    };
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: "选择 AI" }));
+
+    const panel = await screen.findByTestId("ai-panel");
+    expect(within(panel).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Claude",
+      "ChatGPT",
+    ]);
   });
 
   it("selects a provider: navigates, persists default, restores AI, closes", async () => {

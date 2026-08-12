@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { DEFAULT_SETTINGS } from "../../state/defaults";
 
 const saveSettings = vi.fn().mockResolvedValue(undefined);
@@ -19,6 +20,53 @@ vi.mock("../../lib/commands", () => ({
   deleteProvider: (id: string) => deleteProvider(id),
 }));
 
+// jsdom 没有布局信息，无法让 dnd-kit 计算真实碰撞位置；以一个确定的拖放结果验证
+// 配置页自身的重排、暂存与持久化行为。
+vi.mock("@dnd-kit/core", async () => {
+  const React = await import("react");
+  return {
+    DndContext: ({ children, onDragEnd }: { children: ReactNode; onDragEnd: (event: unknown) => void }) =>
+      React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(
+          "button",
+          { type: "button", onClick: () => onDragEnd({ active: { id: "claude" }, over: { id: "chatgpt" } }) },
+          "完成模拟拖动"
+        ),
+        children
+      ),
+    KeyboardSensor: class KeyboardSensor {},
+    PointerSensor: class PointerSensor {},
+    closestCenter: () => null,
+    useSensor: () => ({}),
+    useSensors: (...sensors: unknown[]) => sensors,
+  };
+});
+
+vi.mock("@dnd-kit/sortable", () => {
+  return {
+    SortableContext: ({ children }: { children: ReactNode }) => children,
+    arrayMove: <T,>(items: T[], from: number, to: number) => {
+      const next = [...items];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    },
+    sortableKeyboardCoordinates: () => ({ x: 0, y: 0 }),
+    useSortable: () => ({
+      attributes: {},
+      listeners: {},
+      setActivatorNodeRef: () => {},
+      setNodeRef: () => {},
+      transform: null,
+      transition: undefined,
+      isDragging: false,
+    }),
+    verticalListSortingStrategy: () => [],
+  };
+});
+
 import { SettingsProvider } from "../../state/SettingsContext";
 import { I18nProvider } from "../../i18n";
 import { AiConfigSettings } from "./AiConfigSettings";
@@ -33,6 +81,10 @@ function setup() {
   );
 }
 
+function renderedProviderIds() {
+  return Array.from(document.querySelectorAll<HTMLElement>("[data-provider-id]")).map((el) => el.dataset.providerId);
+}
+
 beforeEach(() => {
   saveSettings.mockClear();
   addProvider.mockReset();
@@ -45,6 +97,39 @@ describe("AiConfigSettings", () => {
     setup();
     await waitFor(() => expect(screen.getByText("ChatGPT")).toBeInTheDocument());
     expect(screen.getByText("Claude")).toBeInTheDocument();
+  });
+
+  it("previews a dragged order and persists it only after saving the order", async () => {
+    setup();
+    await waitFor(() => expect(screen.getByText("ChatGPT")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: "完成模拟拖动" }));
+    expect(renderedProviderIds()).toEqual(["claude", "chatgpt", "aistudio"]);
+    expect(saveSettings).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "保存排序" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "保存排序" }));
+    await waitFor(() => {
+      const last = saveSettings.mock.calls.at(-1)![0];
+      expect(last.providers.map((p: any) => p.id)).toEqual(["claude", "chatgpt", "aistudio"]);
+    });
+  });
+
+  it("cancels a pending sort and does not persist it", async () => {
+    setup();
+    await waitFor(() => expect(screen.getByText("ChatGPT")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "完成模拟拖动" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "取消排序" }));
+    expect(renderedProviderIds()).toEqual(["chatgpt", "claude", "aistudio"]);
+    expect(saveSettings).not.toHaveBeenCalled();
+  });
+
+  it("does not add a drag handle for an unsaved provider", async () => {
+    setup();
+    await waitFor(() => screen.getByText("ChatGPT"));
+    await userEvent.click(screen.getByRole("button", { name: "添加AI服务商" }));
+    expect(screen.queryByRole("button", { name: "拖动以排序：新建服务商" })).not.toBeInTheDocument();
   });
 
   it("does not persist while editing; saves only on save button", async () => {

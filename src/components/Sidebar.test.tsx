@@ -16,22 +16,35 @@ describe("Sidebar", () => {
     expect(screen.getByRole("button", { name: "Claude" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "设置" })).toBeInTheDocument();
   });
+
   it("calls onSelect with provider id", async () => {
     const onSelect = vi.fn();
     render(<Sidebar providers={providers} activeId="chatgpt" settingsActive={false} onSelect={onSelect} onOpenSettings={() => {}} onRefresh={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "Claude" }));
     expect(onSelect).toHaveBeenCalledWith("claude");
   });
+
   it("calls onOpenSettings", async () => {
     const onOpenSettings = vi.fn();
     render(<Sidebar providers={providers} activeId="chatgpt" settingsActive={false} onSelect={() => {}} onOpenSettings={onOpenSettings} onRefresh={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "设置" }));
     expect(onOpenSettings).toHaveBeenCalled();
   });
+
   it("calls onRefresh when refresh button clicked", async () => {
     const onRefresh = vi.fn();
     render(<Sidebar providers={providers} activeId="chatgpt" settingsActive={false} onSelect={() => {}} onOpenSettings={() => {}} onRefresh={onRefresh} />);
     await userEvent.click(screen.getByRole("button", { name: "刷新" }));
     expect(onRefresh).toHaveBeenCalled();
+  });
+
+  it("renders provider logos in the received order", () => {
+    render(<Sidebar providers={[providers[1], providers[0]]} activeId="claude" settingsActive={false} onSelect={() => {}} onOpenSettings={() => {}} onRefresh={() => {}} />);
+
+    const names = screen
+      .getAllByRole("button")
+      .map((button) => button.getAttribute("aria-label"))
+      .filter((label) => label === "Claude" || label === "ChatGPT");
+    expect(names).toEqual(["Claude", "ChatGPT"]);
   });
 });

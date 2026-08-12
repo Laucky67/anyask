@@ -1,6 +1,40 @@
 .cardWrap {
   display: flex;
   flex-direction: column;
+  transform-origin: center;
+  will-change: transform;
+}
+.cardWrap[data-dragging] {
+  opacity: 0.45;
+}
+.dragHandle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: none;
+  padding: 4px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: grab;
+  touch-action: none;
+}
+.dragHandle:hover,
+.dragHandle:focus-visible {
+  color: var(--fg);
+  background: transparent;
+  outline: none;
+  box-shadow: none;
+}
+.dragHandle:active {
+  background: transparent;
+  cursor: grabbing;
+  box-shadow: none;
+}
+.dragHandle:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 .panel {
   overflow: hidden;
@@ -32,4 +66,42 @@
   border-color: var(--accent);
   color: var(--accent);
   transform: scale(1.01);
+}
+.addBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+.orderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 4px 0;
+}
+.orderActions button {
+  height: 36px;
+  border-radius: 8px;
+  padding: 0 14px;
+  cursor: pointer;
+  font: inherit;
+}
+.cancelOrderBtn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+}
+.saveOrderBtn {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: white;
+}
+.orderActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.orderError {
+  margin: 0 auto 0 0;
+  color: var(--danger, #dc2626);
+  font-size: 13px;
 }
