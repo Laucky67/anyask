@@ -38,6 +38,7 @@ pub struct AppState {
 #[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct PendingSelection {
     pub text: String,
+    pub source: Option<crate::selection_capture::SelectionSource>,
     pub x: i32,
     pub y: i32,
     pub show: bool,

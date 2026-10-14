@@ -116,6 +116,7 @@ dependencies = [
  "tokio",
  "uiautomation",
  "uuid",
+ "windows 0.62.2",
 ]
 
 [[package]]

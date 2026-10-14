@@ -79,7 +79,12 @@ pub fn trigger_at(
     require_text: bool,
     mode: CaptureMode,
 ) {
-    let text = match plan_capture(crate::selection_capture::focused_selection(), mode) {
+    let captured = crate::selection_capture::capture_selection(
+        (anchor_x, anchor_y),
+        mode == CaptureMode::AccessibilityOnly,
+    );
+    let source = captured.as_ref().and_then(|value| value.source.clone());
+    let text = match plan_capture(captured.map(|value| value.text), mode) {
         CapturePlan::Use(text) => text,
         CapturePlan::Clipboard => {
             // 让按键状态沉降:快捷键含修饰键(默认 Alt+Q),get-selected-text 在 Windows
@@ -98,6 +103,7 @@ pub fn trigger_at(
         let state = app.state::<AppState>();
         let mut pending = state.pending_selection.lock().unwrap();
         pending.text = text;
+        pending.source = source;
         pending.x = anchor_x;
         pending.y = anchor_y;
         pending.show = true;

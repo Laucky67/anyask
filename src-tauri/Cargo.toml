@@ -43,6 +43,7 @@ tauri-plugin-single-instance = "2"
 [target.'cfg(windows)'.dependencies]
 # UI Automation 高层封装(Apache-2.0):焦点元素 → TextPattern → get_selection。
 uiautomation = "0.25"
+windows = { version = "0.62.2", features = ["Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging", "Win32_System_Ole"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # AX API 原始 FFI(MIT/Apache) + CoreFoundation 内存/字符串封装。
@@ -52,4 +53,3 @@ core-foundation = "0.10"
 [target.'cfg(target_os = "linux")'.dependencies]
 # 读 X11 PRIMARY selection(选中即入、读取被动、零副作用)。
 arboard = "3"
-
