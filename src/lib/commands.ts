@@ -123,6 +123,12 @@ export async function refreshActiveAiWebview(providerId: string): Promise<void> 
 /** 划词捕获的待显示状态（与 Rust PendingSelection 对应） */
 export interface PendingSelection {
   text: string;
+  source: {
+    process_id: number;
+    window_process_id: number;
+    window_handle: string;
+    rects: { x: number; y: number; width: number; height: number }[];
+  } | null;
   x: number;
   y: number;
   show: boolean;

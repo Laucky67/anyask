@@ -1,37 +1,53 @@
 //! 无障碍取词:用 OS 无障碍 API 读「焦点元素的当前选区」,零副作用——
 //! 不碰剪贴板、不合成按键(对比 get-selected-text 在 Windows/Linux 合成 Ctrl+C 的做法)。
 //!
-//! 这是划词自动路径能甩掉 Ctrl+C 副作用的核心:拖窗口/拖滚动条时焦点元素没有选区,
-//! 直接返回 None,不会朝终端发 SIGINT。快捷键路径(用户主动按键)才保留 Ctrl+C 兜底。
+//! 自动路径只读选区，不模拟复制。源应用可能保留旧选区；这里不判断滚动条手势。
 //!
 //! 平台:Windows = UI Automation;macOS = AX API;Linux = X11 PRIMARY selection。
 
-/// 读「焦点元素的当前选区」,零副作用。
-/// 仅当确有非空选区时返回 `Some`;无选区 / 不支持无障碍 / 出错 → `None`。
 #[cfg(windows)]
-pub fn focused_selection() -> Option<String> {
-    // UIAutomation 走 COM。主线程(快捷键回调)可能是 STA apartment,与 crate 期望的
-    // MTA 冲突;放到新起的短命线程上跑,apartment 干净,自动路径与快捷键路径都安全。
-    // 所有 COM 对象只在子线程内创建/析构,跨线程回传的只有 Option<String>(Send)。
-    std::thread::spawn(focused_selection_windows)
-        .join()
-        .ok()
-        .flatten()
+mod windows_capture;
+
+/// 选区矩形使用屏幕物理坐标；多行选区保留各行矩形，不以控件矩形代替。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct SelectionRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
-#[cfg(windows)]
-fn focused_selection_windows() -> Option<String> {
-    use uiautomation::patterns::UITextPattern;
-    use uiautomation::UIAutomation;
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct SelectionSource {
+    /// UIA 提供者进程可能与浏览器顶层窗口进程不同，分别记录。
+    pub process_id: u32,
+    pub window_process_id: u32,
+    /// 使用字符串避免 JavaScript 对窗口句柄的整数精度损失。
+    pub window_handle: String,
+    pub rects: Vec<SelectionRect>,
+}
 
-    let automation = UIAutomation::new().ok()?;
-    let element = automation.get_focused_element().ok()?;
-    // 焦点元素不支持 TextPattern(如终端、部分自绘控件)→ Err → None。
-    let text_pattern = element.get_pattern::<UITextPattern>().ok()?;
-    let ranges = text_pattern.get_selection().ok()?;
-    let first = ranges.into_iter().next()?;
-    let text = first.get_text(-1).ok()?; // -1 = 取整段
-    non_empty(text)
+#[derive(Debug, Clone)]
+pub struct CapturedSelection {
+    pub text: String,
+    pub source: Option<SelectionSource>,
+}
+
+/// 自动路径优先鼠标位置；快捷键优先焦点，鼠标不必停在所选文字上。
+pub fn capture_selection(anchor: (i32, i32), prefer_point: bool) -> Option<CapturedSelection> {
+    #[cfg(windows)]
+    {
+        // COM 对象在独立线程内创建和析构，只传回文本和普通来源数据。
+        std::thread::spawn(move || windows_capture::capture(anchor, prefer_point))
+            .join()
+            .ok()
+            .flatten()
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (anchor, prefer_point);
+        focused_selection().map(|text| CapturedSelection { text, source: None })
+    }
 }
 
 /// macOS:systemwide → kAXFocusedUIElement → kAXSelectedText。
