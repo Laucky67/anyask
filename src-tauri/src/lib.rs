@@ -15,7 +15,16 @@ use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // 单实例插件必须最先注册，避免第二个进程初始化托盘、快捷键和全局钩子。
+    // 用户再次启动 Anyask 时，直接显示并聚焦已有实例的主窗口。
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        tray::show_main(app);
+    }));
+
+    builder
         // Windows 上默认设备事件过滤可能影响 rdev 的键盘钩子；保留原始输入事件。
         .device_event_filter(tauri::DeviceEventFilter::Never)
         .manage(state::AppState::default())
