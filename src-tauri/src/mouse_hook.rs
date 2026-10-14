@@ -14,7 +14,7 @@ const UNSET: i32 = i32::MIN;
 static LAST_X: AtomicI32 = AtomicI32::new(UNSET);
 static LAST_Y: AtomicI32 = AtomicI32::new(UNSET);
 
-/// 输入代号:每次左键按下或任意键盘按下自增,用于作废延迟取词任务(见 schedule_capture)。
+/// 输入代号:左键按下、键盘按下或滚轮滚动时自增，用于作废延迟取词任务。
 static INPUT_GEN: AtomicU64 = AtomicU64::new(0);
 
 /// 由缓存的 (x,y) 还原光标位置;任一轴为哨兵视作未知。纯函数,便于单测。
@@ -91,6 +91,7 @@ enum InputMsg {
     Press { x: i32, y: i32 },
     Release { x: i32, y: i32 },
     KeyPress,
+    Scroll,
 }
 
 /// 在 setup 中调用一次:起 rdev 全局输入钩子线程 + 处理线程。
@@ -119,6 +120,11 @@ pub fn start(app: AppHandle) {
                 // 立即作废延迟任务，避免处理线程尚未消费消息时旧选区已弹出。
                 INPUT_GEN.fetch_add(1, Ordering::SeqCst);
                 let _ = tx.send(InputMsg::KeyPress);
+            }
+            rdev::EventType::Wheel { delta_x, delta_y } if delta_x != 0 || delta_y != 0 => {
+                // 在钩子里立即作废延迟任务；窗口隐藏交给处理线程。
+                INPUT_GEN.fetch_add(1, Ordering::SeqCst);
+                let _ = tx.send(InputMsg::Scroll);
             }
             _ => {}
         };
@@ -172,8 +178,8 @@ fn process_loop(app: AppHandle, rx: mpsc::Receiver<InputMsg>) {
                     schedule_capture(app.clone(), x, y);
                 }
             }
-            InputMsg::KeyPress => {
-                // 键盘操作应注销工具条，并中断可能尚未抬起的鼠标候选拖选。
+            InputMsg::KeyPress | InputMsg::Scroll => {
+                // 键盘或滚动操作收起工具条，并中断尚未抬起的候选拖选。
                 press = None;
                 if state.toolbar_rect.lock().unwrap().is_some() {
                     let _ = crate::selection_toolbar::hide(&app);
