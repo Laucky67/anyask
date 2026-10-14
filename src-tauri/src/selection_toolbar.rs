@@ -1,11 +1,14 @@
 use std::time::Duration;
 
 use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
+use crate::selection_capture::SelectionRect;
 use crate::state::AppState;
+
+mod placement;
 
 const LABEL: &str = "selection-toolbar";
 const SHOW_EVENT: &str = "selection-toolbar:show";
@@ -95,6 +98,15 @@ pub fn trigger_at(
         CapturePlan::Empty => String::new(),
     };
     println!("[selection] captured: {text:?} @ ({anchor_x},{anchor_y})");
+    let rects = source
+        .as_ref()
+        .map(|value| value.rects.as_slice())
+        .unwrap_or_default();
+    println!(
+        "[selection] geometry: has_text_rect={} rect_count={} rects={rects:?}",
+        !rects.is_empty(),
+        rects.len()
+    );
     if require_text && text.trim().is_empty() {
         return; // 划词路径没真正选到字 → 不弹
     }
@@ -165,46 +177,67 @@ fn ensure_window(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// 按锚点 + 尺寸（逻辑像素）把工具条窗口定位到不溢出显示器的位置（不 show）。
-/// trigger 用近似 INIT 尺寸抢焦点，place_and_show 用前端实测尺寸精修，二者共用。
+/// 用选区物理矩形和前端实测逻辑尺寸定位；显示前完成计算。
 fn position_window(
     win: &tauri::Window,
     anchor_x: i32,
     anchor_y: i32,
     width: f64,
     height: f64,
+    rects: &[SelectionRect],
 ) -> Result<(), String> {
-    let monitor = monitor_for_point(win, anchor_x, anchor_y)
+    let monitor = monitor_for_selection(win, anchor_x, anchor_y, rects)
         .or_else(|| win.primary_monitor().ok().flatten())
         .ok_or("no monitor")?;
     let scale = monitor.scale_factor();
-    let pos = monitor.position();
-    let size = monitor.size();
+    let area = monitor.work_area();
     let mon = MonitorRect {
-        x: pos.x,
-        y: pos.y,
-        w: size.width as i32,
-        h: size.height as i32,
+        x: area.position.x,
+        y: area.position.y,
+        w: area.size.width as i32,
+        h: area.size.height as i32,
     };
-    let phys_w = ((width * scale).round() as i32).max(1);
-    let phys_h = ((height * scale).round() as i32).max(1);
-    let (x, y) = clamp_to_monitor(anchor_x, anchor_y, phys_w, phys_h, mon);
-    win.set_size(LogicalSize::new(width.max(1.0), height.max(1.0)))
+    let layout = placement::calculate((anchor_x, anchor_y), (width, height), scale, rects, mon);
+    println!(
+        "[selection] placement: source={} side={} position=({},{}) scale={} work_area={mon:?}",
+        if layout.uses_selection {
+            "text"
+        } else {
+            "mouse"
+        },
+        layout.side,
+        layout.x,
+        layout.y,
+        scale
+    );
+    win.set_position(PhysicalPosition::new(layout.x, layout.y))
         .map_err(|e| e.to_string())?;
-    win.set_position(PhysicalPosition::new(x, y))
-        .map_err(|e| e.to_string())?;
+    // 先移动到目标屏，再设置物理尺寸，避免沿用窗口之前所在屏的缩放比例。
+    win.set_size(PhysicalSize::new(
+        (width * scale).ceil().max(1.0) as u32,
+        (height * scale).ceil().max(1.0) as u32,
+    ))
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 /// 定位(防溢出)并显示。仅接收前端测得的逻辑尺寸;锚点从 pending 读。
 pub fn place_and_show(app: &AppHandle, width: f64, height: f64) -> Result<(), String> {
     let win = app.get_window(LABEL).ok_or("toolbar window not found")?;
-    let (anchor_x, anchor_y) = {
+    let (anchor_x, anchor_y, rects) = {
         let state = app.state::<AppState>();
         let pending = state.pending_selection.lock().unwrap();
-        (pending.x, pending.y)
+        (
+            pending.x,
+            pending.y,
+            pending
+                .source
+                .as_ref()
+                .map(|source| source.rects.clone())
+                .unwrap_or_default(),
+        )
     };
-    position_window(&win, anchor_x, anchor_y, width, height)?;
+    position_window(&win, anchor_x, anchor_y, width, height, &rects)?;
     win.show().map_err(|e| e.to_string())?;
 
     // 记录实际物理矩形,供 mouse_hook 做"点外部隐藏"命中检测。不抢焦点:划词工具条
@@ -225,14 +258,29 @@ fn record_toolbar_rect(app: &AppHandle, win: &tauri::Window) {
     *app.state::<AppState>().toolbar_rect.lock().unwrap() = rect;
 }
 
-/// 找到包含指定物理坐标点的显示器。
-fn monitor_for_point(win: &tauri::Window, x: i32, y: i32) -> Option<tauri::Monitor> {
+/// 根据选区和鼠标选择显示器，兼顾快捷键时鼠标位于另一屏的情况。
+fn monitor_for_selection(
+    win: &tauri::Window,
+    x: i32,
+    y: i32,
+    rects: &[SelectionRect],
+) -> Option<tauri::Monitor> {
     let monitors = win.available_monitors().ok()?;
-    monitors.into_iter().find(|m| {
-        let p = m.position();
-        let s = m.size();
-        x >= p.x && x < p.x + s.width as i32 && y >= p.y && y < p.y + s.height as i32
-    })
+    let screens: Vec<_> = monitors
+        .iter()
+        .map(|m| {
+            let p = m.position();
+            let s = m.size();
+            MonitorRect {
+                x: p.x,
+                y: p.y,
+                w: s.width as i32,
+                h: s.height as i32,
+            }
+        })
+        .collect();
+    let index = placement::monitor_index((x, y), rects, &screens)?;
+    monitors.into_iter().nth(index)
 }
 
 /// 隐藏工具条(点外部 / 点按钮后调用,不销毁,供复用)。
