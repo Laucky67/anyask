@@ -34,6 +34,10 @@ get-selected-text = "0.1.6"
 rdev = "0.5.3"
 tauri-plugin-clipboard-manager = "2"
 
+# 桌面端仅允许一个 Anyask 实例；重复启动时由已有实例接管。
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"
+
 # 划词无障碍取词:按平台读「焦点元素当前选区」,零副作用(不合成 Ctrl+C)。
 # get-selected-text 保留,仅作快捷键路径读不到时的剪贴板兜底。
 [target.'cfg(windows)'.dependencies]
