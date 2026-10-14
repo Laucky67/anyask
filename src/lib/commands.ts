@@ -135,8 +135,8 @@ export interface PendingSelection {
 }
 
 /** 定位（防溢出）并显示划词工具条；传前端测得的逻辑尺寸 */
-export async function placeAndShowSelectionToolbar(width: number, height: number): Promise<void> {
-  await invoke("place_and_show_selection_toolbar", { width, height });
+export async function placeAndShowSelectionToolbar(width: number, height: number, padding = 0): Promise<void> {
+  await invoke("place_and_show_selection_toolbar", { width, height, padding });
 }
 
 /** 隐藏划词工具条 */

@@ -41,15 +41,18 @@ export function SelectionToolbar() {
   const t = useT();
   const { settings } = useSettings();
   const outerRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<string>("");
   const actions = enabledActions(BUILTIN_SELECTION_ACTIONS);
 
-  // 测量药丸真实尺寸 → 请求 Rust 定位并显示
+  // 连同阴影留白一起测量，让透明窗口完整容纳药丸和阴影。
   const requestShow = useCallback(() => {
     const el = outerRef.current;
-    if (!el) return;
+    const pill = pillRef.current;
+    if (!el || !pill) return;
     const r = el.getBoundingClientRect();
-    void placeAndShowSelectionToolbar(r.width, r.height);
+    const padding = (r.height - pill.getBoundingClientRect().height) / 2;
+    void placeAndShowSelectionToolbar(r.width, r.height, padding);
   }, []);
 
   // 首帧兜底：窗口首次创建时事件已丢，挂载时主动读 pending
@@ -90,19 +93,19 @@ export function SelectionToolbar() {
   }, [settings.language]);
 
   return (
-    // 窗口尺寸 = 本药丸尺寸（place_and_show 按实测 rect 设窗），不留任何透明边距，
-    // 故不加外层 padding，也不用 boxShadow（会被窗口边界裁掉）。圆角外的四角为透明窗体。
-    <div ref={outerRef} className={styles.pill}>
-      {actions.map((a) => {
-        const Icon = ICON_REGISTRY[a.icon];
-        const label = a.labelKey ? t(a.labelKey) : a.label ?? "";
-        return (
-          <ToolbarButton key={a.id} label={label} onClick={() => runAction(a)}>
-            {Icon ? <Icon size={16} /> : null}
-            <span className={styles.label}>{label}</span>
-          </ToolbarButton>
-        );
-      })}
+    <div ref={outerRef} className={styles.surface}>
+      <div ref={pillRef} className={styles.pill}>
+        {actions.map((a) => {
+          const Icon = ICON_REGISTRY[a.icon];
+          const label = a.labelKey ? t(a.labelKey) : a.label ?? "";
+          return (
+            <ToolbarButton key={a.id} label={label} onClick={() => runAction(a)}>
+              {Icon ? <Icon size={16} /> : null}
+              <span className={styles.label}>{label}</span>
+            </ToolbarButton>
+          );
+        })}
+      </div>
     </div>
   );
 }

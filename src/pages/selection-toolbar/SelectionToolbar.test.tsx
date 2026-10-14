@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -9,7 +9,7 @@ const copySelection = vi.fn().mockResolvedValue(undefined);
 const showQuickAsk = vi.fn().mockResolvedValue(undefined);
 const showQuickAskWithPrompt = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../lib/commands", () => ({
-  placeAndShowSelectionToolbar: (w: number, h: number) => placeAndShowSelectionToolbar(w, h),
+  placeAndShowSelectionToolbar: (w: number, h: number, padding: number) => placeAndShowSelectionToolbar(w, h, padding),
   hideSelectionToolbar: () => hideSelectionToolbar(),
   getPendingSelectionShow: () => getPendingSelectionShow(),
   copySelection: () => copySelection(),
@@ -46,7 +46,19 @@ beforeEach(() => {
   getPendingSelectionShow.mockReset().mockResolvedValue({ text: "", x: 0, y: 0, show: false });
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("SelectionToolbar", () => {
+  it("reports the shadow margin separately from the window size", async () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const outer = this.firstElementChild?.tagName === "DIV";
+      return { x: 0, y: 0, width: outer ? 324 : 300, height: outer ? 60 : 36 } as DOMRect;
+    });
+    getPendingSelectionShow.mockResolvedValue({ text: "hello", x: 0, y: 0, show: true });
+    setup();
+    await waitFor(() => expect(placeAndShowSelectionToolbar).toHaveBeenCalledWith(324, 60, 12));
+  });
+
   it("renders the four builtin buttons", () => {
     setup();
     for (const name of ["解释", "翻译", "总结", "复制"]) {

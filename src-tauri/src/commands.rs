@@ -57,8 +57,9 @@ pub fn place_and_show_selection_toolbar(
     app: AppHandle,
     width: f64,
     height: f64,
+    padding: Option<f64>,
 ) -> Result<(), String> {
-    selection_toolbar::place_and_show(&app, width, height)
+    selection_toolbar::place_and_show(&app, width, height, padding.unwrap_or(0.0))
 }
 
 #[tauri::command]

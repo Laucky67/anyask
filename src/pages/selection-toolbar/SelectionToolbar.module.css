@@ -1,3 +1,9 @@
+.surface {
+  display: inline-flex;
+  width: max-content;
+  padding: 12px;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
@@ -5,9 +11,15 @@
   height: 36px;
   padding: 0 4px;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 3px 8px rgba(0, 0, 0, 0.12);
   white-space: nowrap;
+}
+
+:global([data-theme="dark"]) .pill {
+  border-color: var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.3);
 }
 .toolBtn {
   display: inline-flex;

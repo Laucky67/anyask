@@ -184,6 +184,7 @@ fn position_window(
     anchor_y: i32,
     width: f64,
     height: f64,
+    padding: f64,
     rects: &[SelectionRect],
 ) -> Result<(), String> {
     let monitor = monitor_for_selection(win, anchor_x, anchor_y, rects)
@@ -197,7 +198,7 @@ fn position_window(
         w: area.size.width as i32,
         h: area.size.height as i32,
     };
-    let layout = placement::calculate((anchor_x, anchor_y), (width, height), scale, rects, mon);
+    let layout = placement::with_padding((anchor_x, anchor_y), (width, height), padding, scale, rects, mon);
     println!(
         "[selection] placement: source={} side={} position=({},{}) scale={} work_area={mon:?}",
         if layout.uses_selection {
@@ -222,7 +223,7 @@ fn position_window(
 }
 
 /// 定位(防溢出)并显示。仅接收前端测得的逻辑尺寸;锚点从 pending 读。
-pub fn place_and_show(app: &AppHandle, width: f64, height: f64) -> Result<(), String> {
+pub fn place_and_show(app: &AppHandle, width: f64, height: f64, padding: f64) -> Result<(), String> {
     let win = app.get_window(LABEL).ok_or("toolbar window not found")?;
     let (anchor_x, anchor_y, rects) = {
         let state = app.state::<AppState>();
@@ -237,7 +238,7 @@ pub fn place_and_show(app: &AppHandle, width: f64, height: f64) -> Result<(), St
                 .unwrap_or_default(),
         )
     };
-    position_window(&win, anchor_x, anchor_y, width, height, &rects)?;
+    position_window(&win, anchor_x, anchor_y, width, height, padding, &rects)?;
     win.show().map_err(|e| e.to_string())?;
 
     // 记录实际物理矩形,供 mouse_hook 做"点外部隐藏"命中检测。不抢焦点:划词工具条

@@ -83,22 +83,36 @@ pub(super) fn monitor_index(
         .or(mouse)
 }
 
-pub(super) fn calculate(
+#[cfg(test)]
+fn calculate(
     anchor: (i32, i32),
     size: (f64, f64),
     scale: f64,
     rects: &[SelectionRect],
     work_area: MonitorRect,
 ) -> Placement {
+    with_padding(anchor, size, 0.0, scale, rects, work_area)
+}
+
+/// 窗口尺寸含透明阴影留白；文字间距以可见药丸边缘为准。
+pub(super) fn with_padding(
+    anchor: (i32, i32),
+    size: (f64, f64),
+    padding: f64,
+    scale: f64,
+    rects: &[SelectionRect],
+    work_area: MonitorRect,
+) -> Placement {
     let width = (size.0 * scale).ceil().max(1.0) as i32;
     let height = (size.1 * scale).ceil().max(1.0) as i32;
+    let inset = (padding.max(0.0) * scale).round() as i32;
     let gap = (8.0 * scale).ceil().max(1.0) as i32;
     let top = work_area.y;
     let bottom = f64::from(work_area.y) + f64::from(work_area.h);
     if let Some(bounds) = visible_bounds(rects, work_area) {
         let x = (bounds.x + bounds.width / 2.0 - f64::from(width) / 2.0).round() as i32;
-        let above = (bounds.y - f64::from(gap) - f64::from(height)).floor() as i32;
-        let below = (bounds.y + bounds.height + f64::from(gap)).ceil() as i32;
+        let above = (bounds.y - f64::from(gap) - f64::from(height) + f64::from(inset)).floor() as i32;
+        let below = (bounds.y + bounds.height + f64::from(gap) - f64::from(inset)).ceil() as i32;
         let candidate = if above >= top {
             Some((above, "above"))
         } else if f64::from(below) + f64::from(height) <= bottom {
@@ -118,8 +132,8 @@ pub(super) fn calculate(
     }
     // 满屏选区和缺失矩形均回退到鼠标附近，避免药丸离操作位置过远。
     let x = anchor.0.saturating_sub(width / 2);
-    let above = anchor.1.saturating_sub(gap).saturating_sub(height);
-    let below = anchor.1.saturating_add(gap);
+    let above = anchor.1.saturating_sub(gap).saturating_sub(height).saturating_add(inset);
+    let below = anchor.1.saturating_add(gap).saturating_sub(inset);
     let (y, side) = if above >= top && f64::from(above) + f64::from(height) <= bottom {
         (above, "above")
     } else if below >= top && f64::from(below) + f64::from(height) <= bottom {
@@ -153,6 +167,48 @@ mod tests {
             width,
             height,
         }
+    }
+
+    #[test]
+    fn shadow_margin_preserves_visible_gap_above_at_different_scales() {
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let result = with_padding(
+                (590, 315), (324.0, 60.0), 12.0, scale,
+                &[rect(400.0, 300.0, 200.0, 20.0)], AREA,
+            );
+            let visible_bottom = result.y + (60.0 * scale).ceil() as i32 - (12.0 * scale).round() as i32;
+            assert_eq!(300 - visible_bottom, (8.0 * scale).ceil() as i32);
+            assert_eq!(result.side, "above");
+        }
+    }
+
+    #[test]
+    fn shadow_margin_preserves_visible_gap_below_text() {
+        let result = with_padding(
+            (590, 25), (324.0, 60.0), 12.0, 1.0,
+            &[rect(400.0, 10.0, 200.0, 20.0)], AREA,
+        );
+        assert_eq!(result.side, "below");
+        assert_eq!(result.y + 12 - 30, 8);
+    }
+
+    #[test]
+    fn shadow_margin_preserves_mouse_fallback_gap() {
+        let above = with_padding((590, 315), (324.0, 60.0), 12.0, 1.0, &[], AREA);
+        assert_eq!(315 - (above.y + 60 - 12), 8);
+        let below = with_padding((590, 20), (324.0, 60.0), 12.0, 1.0, &[], AREA);
+        assert_eq!(below.side, "below");
+        assert_eq!(below.y + 12 - 20, 8);
+    }
+
+    #[test]
+    fn shadow_window_stays_inside_work_area_at_horizontal_edge() {
+        let result = with_padding(
+            (1890, 215), (324.0, 60.0), 12.0, 1.0,
+            &[rect(1850.0, 200.0, 50.0, 20.0)], AREA,
+        );
+        assert_eq!(result.x + 324, AREA.w);
+        assert_eq!(200 - (result.y + 60 - 12), 8);
     }
 
     #[test]
